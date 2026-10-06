@@ -8,8 +8,7 @@ import { AlertTriangle, BadgeInfo, NotebookTabs, Maximize2, Minimize2, PanelRigh
 import { motion, AnimatePresence } from 'motion/react'
 import { FlaskConical, MessageCircle, X } from 'lucide-react'
 import Image from 'next/image'
-import learnhouseAI_icon from 'public/learnhouse_ai_simple.png'
-import learnhouseAI_logo_black from 'public/learnhouse_ai_black_logo.png'
+import learnhouseAI_icon from 'public/learnhouse_ai_simple_colored.png'
 import React, { useEffect, useRef } from 'react'
 import {
   AIChatBotStateTypes,
@@ -52,25 +51,22 @@ function AIActivityAsk(props: AIActivityAskProps) {
       {isButtonAvailable && (
         <div>
           <ActivityChatMessageBox activity={props.activity} />
-          <div
+          <button
+            type="button"
             onClick={handleOpenAI}
-            style={{
-              background:
-                'conic-gradient(from 32deg at 53.75% 50%, rgb(35, 40, 93) 4deg, rgba(20, 0, 52, 0.95) 59deg, rgba(164, 45, 238, 0.88) 281deg)',
-            }}
-            className="rounded-full px-5 drop-shadow-md flex  items-center space-x-1.5 p-2.5 text-sm text-white hover:cursor-pointer transition delay-150 duration-300 ease-in-out hover:scale-105"
+            className="rounded-full px-5 border border-gray-200 bg-white shadow-sm flex items-center space-x-1.5 p-2.5 text-sm text-gray-800 hover:bg-gray-50 hover:border-gray-300 cursor-pointer transition-colors focus-visible:outline-2 focus-visible:outline-teal-600"
           >
             {' '}
             <i>
               <Image
-                className="outline outline-1 outline-neutral-200/20 rounded-md"
+                className="outline outline-1 outline-gray-200 rounded-md"
                 width={20}
                 src={learnhouseAI_icon}
                 alt=""
               />
             </i>{' '}
             <i className="not-italic text-xs font-bold">{t('ai.ask_ai')}</i>
-          </div>
+          </button>
         </div>
       )}
     </>
@@ -87,6 +83,19 @@ type ActivityChatMessageBoxProps = {
   activity: any
 }
 
+const AI_INPUT_CLASS = 'ring-1 ring-inset ring-gray-200 bg-white w-full rounded-lg outline-hidden px-4 py-2 text-gray-900 text-sm placeholder:text-gray-500 focus:ring-2 focus:ring-teal-600 disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed'
+const AI_ICON_BUTTON_CLASS = 'text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 p-1 rounded-full inline-flex items-center transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-teal-600'
+const AI_SEND_BUTTON_CLASS = 'rounded-lg bg-teal-700 text-white p-2 hover:bg-teal-800 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-teal-600 focus-visible:outline-offset-2'
+
+function AIWelcomeLogo() {
+  return (
+    <div className="flex items-center justify-center gap-2">
+      <Image width={48} src={learnhouseAI_icon} alt="" />
+      <span className="text-4xl font-semibold tracking-tight text-gray-900">AI</span>
+    </div>
+  )
+}
+
 function ActivityChatMessageBox(props: ActivityChatMessageBoxProps) {
   const { t } = useTranslation()
   const session = useLHSession() as any
@@ -96,9 +105,6 @@ function ActivityChatMessageBox(props: ActivityChatMessageBoxProps) {
   const { mode, setMode } = useAIPanelMode()
 
   const isInputDisabled = aiChatBotState.isWaitingForResponse || aiChatBotState.isStreaming
-  const inputClass = isInputDisabled
-    ? 'ring-1 ring-inset ring-white/10 bg-gray-950/40 w-full rounded-lg outline-hidden px-4 py-2 text-white text-sm placeholder:text-white/30 opacity-30 '
-    : 'ring-1 ring-inset ring-white/10 bg-gray-950/40 w-full rounded-lg outline-hidden px-4 py-2 text-white text-sm placeholder:text-white/30'
 
   useEffect(() => {
     if (aiChatBotState.isModalOpen) {
@@ -284,12 +290,11 @@ function ActivityChatMessageBox(props: ActivityChatMessageBoxProps) {
             style={{ pointerEvents: 'none' }}
           >
             <div
+              data-ai-panel="floating"
               style={{
                 pointerEvents: 'auto',
-                background:
-                  'linear-gradient(0deg, rgba(0, 0, 0, 0.2) 0%, rgba(0, 0, 0, 0.2) 100%), radial-gradient(105.16% 105.16% at 50% -5.16%, rgba(255, 255, 255, 0.18) 0%, rgba(0, 0, 0, 0) 100%), rgb(2 1 25 / 98%)',
               }}
-              className={`bg-black z-[10000] shadow-lg ring-1 ring-inset ring-white/10 text-white p-4 backdrop-blur-md transition-all duration-300 flex flex-col rounded-2xl max-w-(--breakpoint-2xl) w-10/12 mx-auto fixed bottom-4 left-1/2 transform -translate-x-1/2 ${
+              className={`bg-white z-[10000] shadow-xl ring-1 ring-inset ring-gray-200 text-gray-900 p-4 transition-all duration-300 flex flex-col rounded-2xl max-w-(--breakpoint-2xl) w-11/12 sm:w-10/12 mx-auto fixed bottom-4 left-1/2 transform -translate-x-1/2 ${
                 aiChatBotState.isFullscreen
                   ? 'h-[80vh]'
                   : 'h-[350px]'
@@ -302,14 +307,14 @@ function ActivityChatMessageBox(props: ActivityChatMessageBoxProps) {
                       setMode('side')
                       dispatchAIChatBot({ type: 'switchToSideMode' })
                     }}
-                    className="text-white/50 hover:text-white/70 hover:cursor-pointer bg-white/10 p-1 rounded-full items-center transition-colors"
+                    className={AI_ICON_BUTTON_CLASS}
                     title="Switch to side mode"
                   >
                     <PanelRightOpen size={18} />
                   </button>
                   <button
                     onClick={toggleFullscreen}
-                    className="text-white/50 hover:text-white/70 hover:cursor-pointer bg-white/10 p-1 rounded-full items-center transition-colors"
+                    className={AI_ICON_BUTTON_CLASS}
                     title={aiChatBotState.isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
                   >
                     {aiChatBotState.isFullscreen ? (
@@ -318,29 +323,32 @@ function ActivityChatMessageBox(props: ActivityChatMessageBoxProps) {
                       <Maximize2 size={18} />
                     )}
                   </button>
-                  <X
-                    size={20}
-                    className="text-white/50 hover:cursor-pointer bg-white/10 p-1 rounded-full items-center"
+                  <button
+                    type="button"
+                    aria-label={t('common.close')}
+                    className={AI_ICON_BUTTON_CLASS}
                     onClick={closeModal}
-                  />
+                  >
+                    <X size={18} />
+                  </button>
                 </div>
                 <div
-                  className={`flex space-x-2 items-center -ms-[100px] ${isInputDisabled ? 'animate-pulse' : ''
+                  className={`flex space-x-2 items-center ${isInputDisabled ? 'animate-pulse' : ''
                     }`}
                 >
                   <Image
-                    className={`outline outline-1 outline-neutral-200/20 rounded-lg ${isInputDisabled ? 'animate-pulse' : ''
+                    className={`outline outline-1 outline-gray-200 rounded-lg ${isInputDisabled ? 'animate-pulse' : ''
                       }`}
                     width={24}
                     src={learnhouseAI_icon}
                     alt=""
                   />
-                  <span className="text-sm font-semibold text-white/70">
+                  <span className="text-sm font-semibold text-gray-800">
                     {' '}
                     AI
                   </span>
                 </div>
-                <div className="bg-white/5 text-white/40 py-0.5 px-3 flex space-x-1 rounded-full items-center">
+                <div className="bg-gray-100 text-gray-600 py-0.5 px-3 flex space-x-1 rounded-full items-center">
                   <FlaskConical size={14} />
                   <span className="text-xs font-semibold antialiased ">
                     {t('ai.experimental')}
@@ -348,19 +356,17 @@ function ActivityChatMessageBox(props: ActivityChatMessageBoxProps) {
                 </div>
               </div>
               <div
-                className={`w-100 h-0.5 bg-white/5 rounded-full mx-auto mb-3 ${isInputDisabled ? 'animate-pulse' : ''
+                className={`w-100 h-0.5 bg-gray-100 rounded-full mx-auto mb-3 ${isInputDisabled ? 'animate-pulse' : ''
                   }`}
               ></div>
               {aiChatBotState.messages.length > 0 &&
                 !aiChatBotState.error.isError ? (
                 <div
                   ref={messagesContainerRef}
-                  className={`flex flex-col w-full space-y-3 overflow-y-auto scroll-smooth pe-2 ${
-                    aiChatBotState.isFullscreen ? 'flex-1' : 'h-[237px]'
-                  }`}
+                  className="flex flex-col flex-1 min-h-0 w-full space-y-3 overflow-y-auto scroll-smooth pe-2"
                   style={{
                     scrollbarWidth: 'thin',
-                    scrollbarColor: 'rgba(255,255,255,0.1) transparent'
+                    scrollbarColor: '#9ca3af transparent'
                   }}
                 >
                   <AnimatePresence mode="popLayout">
@@ -407,17 +413,17 @@ function ActivityChatMessageBox(props: ActivityChatMessageBoxProps) {
                         </div>
                         <div className="flex items-center space-x-1.5 px-2 py-2">
                           <motion.span
-                            className="w-2 h-2 bg-purple-400/80 rounded-full"
+                            className="w-2 h-2 bg-teal-600 rounded-full"
                             animate={{ opacity: [0.4, 1, 0.4], scale: [0.85, 1, 0.85] }}
                             transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
                           />
                           <motion.span
-                            className="w-2 h-2 bg-purple-400/80 rounded-full"
+                            className="w-2 h-2 bg-teal-600 rounded-full"
                             animate={{ opacity: [0.4, 1, 0.4], scale: [0.85, 1, 0.85] }}
                             transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut", delay: 0.2 }}
                           />
                           <motion.span
-                            className="w-2 h-2 bg-purple-400/80 rounded-full"
+                            className="w-2 h-2 bg-teal-600 rounded-full"
                             animate={{ opacity: [0.4, 1, 0.4], scale: [0.85, 1, 0.85] }}
                             transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut", delay: 0.4 }}
                           />
@@ -458,20 +464,20 @@ function ActivityChatMessageBox(props: ActivityChatMessageBoxProps) {
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
                             transition={{ duration: 0.2 }}
-                            className="flex justify-center items-center gap-1.5 text-white/30 text-xs py-2"
+                            className="flex justify-center items-center gap-1.5 text-gray-500 text-xs py-2"
                           >
                             <motion.span
-                              className="w-1 h-1 bg-white/40 rounded-full"
+                              className="w-1 h-1 bg-gray-500 rounded-full"
                               animate={{ opacity: [0.3, 0.8, 0.3] }}
                               transition={{ duration: 1, repeat: Infinity, ease: "easeInOut" }}
                             />
                             <motion.span
-                              className="w-1 h-1 bg-white/40 rounded-full"
+                              className="w-1 h-1 bg-gray-500 rounded-full"
                               animate={{ opacity: [0.3, 0.8, 0.3] }}
                               transition={{ duration: 1, repeat: Infinity, ease: "easeInOut", delay: 0.15 }}
                             />
                             <motion.span
-                              className="w-1 h-1 bg-white/40 rounded-full"
+                              className="w-1 h-1 bg-gray-500 rounded-full"
                               animate={{ opacity: [0.3, 0.8, 0.3] }}
                               transition={{ duration: 1, repeat: Infinity, ease: "easeInOut", delay: 0.3 }}
                             />
@@ -503,14 +509,14 @@ function ActivityChatMessageBox(props: ActivityChatMessageBoxProps) {
                 />
               )}
               {aiChatBotState.error.isError && (
-                <div className={`flex items-center justify-center ${aiChatBotState.isFullscreen ? 'flex-1' : 'h-[237px]'}`}>
-                  <div className="flex flex-col mx-auto w-[600px] space-y-2 p-5 rounded-lg bg-red-500/20 outline outline-1 outline-red-500">
+                <div className="flex items-center justify-center flex-1 min-h-0 overflow-y-auto">
+                  <div className="flex flex-col mx-auto w-full max-w-xl space-y-2 p-5 rounded-lg bg-red-50 outline outline-1 outline-red-200">
                     <AlertTriangle size={20} className="text-red-500" />
                     <div className="flex flex-col">
-                      <h3 className="font-semibold text-red-200">
+                      <h3 className="font-semibold text-red-800">
                         {t('common.something_wrong_happened')}
                       </h3>
-                      <span className="text-red-100 text-sm ">
+                      <span className="text-red-700 text-sm ">
                         {aiChatBotState.error.error_message}
                       </span>
                     </div>
@@ -535,17 +541,21 @@ function ActivityChatMessageBox(props: ActivityChatMessageBoxProps) {
                     aria-label={t('ai.ask_ai_placeholder')}
                     placeholder={t('ai.ask_ai_placeholder')}
                     type="text"
-                    className={inputClass}
+                    className={AI_INPUT_CLASS}
                     name=""
                     id=""
                   />
                 </div>
                 <div className="">
-                  <MessageCircle
-                    size={20}
-                    className={`text-white/50 ${isInputDisabled ? 'opacity-30 cursor-not-allowed' : 'hover:cursor-pointer hover:text-white/70'}`}
-                    onClick={() => !isInputDisabled && sendMessage(aiChatBotState.chatInputValue)}
-                  />
+                  <button
+                    type="button"
+                    aria-label="Send message"
+                    disabled={isInputDisabled}
+                    className={AI_SEND_BUTTON_CLASS}
+                    onClick={() => sendMessage(aiChatBotState.chatInputValue)}
+                  >
+                    <MessageCircle size={20} />
+                  </button>
                 </div>
               </div>
             </div>
@@ -584,11 +594,12 @@ function AIMessageComponent({ message, isAI, isStreaming = false }: AIMessageCom
             <AIMarkdownRenderer
               content={message.message}
               isStreaming={isStreaming}
+              theme="light"
             />
           </div>
         ) : (
-          <div className="inline-block bg-white/5 rounded-xl rounded-ss-sm px-3 py-2 max-w-[85%]">
-            <p className="text-white/90 text-sm leading-relaxed">
+          <div className="inline-block bg-gray-100 rounded-xl rounded-ss-sm px-3 py-2 max-w-[85%]">
+            <p className="text-gray-900 text-sm leading-relaxed">
               {message.message}
             </p>
           </div>
@@ -609,7 +620,7 @@ const AIMessagePlaceHolder = (props: {
 
   if (!aiChatBotState.error.isError) {
     return (
-      <div className={`w-full ${props.isFullscreen ? 'flex-1 flex items-center justify-center' : 'h-[237px]'}`}>
+      <div className={`w-full flex-1 min-h-0 overflow-y-auto ${props.isFullscreen ? 'flex items-center justify-center' : ''}`}>
         <div className="flex flex-col text-center justify-center pt-6">
           <motion.div
             initial={{ y: 20, opacity: 0, filter: 'blur(5px)' }}
@@ -624,13 +635,8 @@ const AIMessagePlaceHolder = (props: {
               delay: 0.17,
             }}
           >
-            <Image
-              width={100}
-              className="mx-auto"
-              src={learnhouseAI_logo_black}
-              alt=""
-            />
-            <p className="pt-3 text-2xl font-semibold text-white/70 flex justify-center space-x-2 items-center">
+            <AIWelcomeLogo />
+            <p className="pt-3 text-lg sm:text-2xl font-semibold text-gray-800 flex flex-wrap justify-center gap-x-2 items-center">
               <span className="items-center">{t('common.hello')}</span>
               <span className="capitalize flex space-x-2 items-center">
                 <UserAvatar rounded="rounded-lg" border="border-2" width={35} shadow="shadow-none" />
@@ -651,7 +657,7 @@ const AIMessagePlaceHolder = (props: {
               velocity: 2,
               delay: 0.27,
             }}
-            className="questions flex space-x-3 mx-auto pt-6 flex-wrap justify-center"
+            className="questions flex gap-2 mx-auto pt-4 flex-wrap justify-center"
           >
             <AIChatPredefinedQuestion
               sendMessage={props.sendMessage}
@@ -688,15 +694,16 @@ const AIChatPredefinedQuestion = (props: {
   }
 
   return (
-    <div
+    <button
+      type="button"
       onClick={() => props.sendMessage(getQuestion(props.label))}
-      className="flex space-x-1.5 items-center bg-white/5 cursor-pointer px-4 py-1.5 rounded-xl outline outline-1 outline-neutral-100/10 text-xs font-semibold text-white/40 hover:text-white/60 hover:bg-white/10 hover:outline-neutral-200/40 delay-75 ease-linear transition-all"
+      className="flex space-x-1.5 items-center bg-gray-50 cursor-pointer px-4 py-1.5 rounded-xl border border-gray-200 text-xs font-medium text-gray-700 hover:text-teal-800 hover:bg-teal-50 hover:border-teal-200 transition-colors focus-visible:outline-2 focus-visible:outline-teal-600"
     >
       {props.label === 'about' && <BadgeInfo size={15} />}
       {props.label === 'flashcards' && <NotebookTabs size={15} />}
-      {props.label === 'examples' && <div className="text-white/50">Ex</div>}
+      {props.label === 'examples' && <div className="text-gray-600">Ex</div>}
       <span>{getQuestion(props.label)}</span>
-    </div>
+    </button>
   )
 }
 
@@ -719,9 +726,6 @@ function AISidePanelInline(props: AISidePanelProps) {
   const [isSecondaryBarVisible, setIsSecondaryBarVisible] = React.useState(false)
 
   const isInputDisabled = aiChatBotState?.isWaitingForResponse || aiChatBotState?.isStreaming
-  const inputClass = isInputDisabled
-    ? 'ring-1 ring-inset ring-white/10 bg-gray-950/40 w-full rounded-lg outline-hidden px-4 py-2 text-white text-sm placeholder:text-white/30 opacity-30'
-    : 'ring-1 ring-inset ring-white/10 bg-gray-950/40 w-full rounded-lg outline-hidden px-4 py-2 text-white text-sm placeholder:text-white/30'
 
   // Mark initial render complete after mount
   useEffect(() => {
@@ -892,6 +896,7 @@ function AISidePanelInline(props: AISidePanelProps) {
 
   return (
     <motion.div
+      data-ai-panel="side"
       initial={isInitialRender.current ? false : { opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={isInitialRender.current ? { duration: 0 } : {
@@ -900,12 +905,10 @@ function AISidePanelInline(props: AISidePanelProps) {
         duration: 0.4,
       }}
       style={{
-        background:
-          'linear-gradient(0deg, rgba(0, 0, 0, 0.2) 0%, rgba(0, 0, 0, 0.2) 100%), radial-gradient(105.16% 105.16% at 50% -5.16%, rgba(255, 255, 255, 0.18) 0%, rgba(0, 0, 0, 0) 100%), rgb(2 1 25 / 98%)',
         height: panelHeight,
         top: topPosition,
       }}
-      className="sticky w-[380px] shrink-0 nice-shadow ring-1 ring-inset ring-white/10 text-white p-4 backdrop-blur-md flex flex-col rounded-xl transition-all duration-300"
+      className="sticky w-[380px] shrink-0 nice-shadow bg-white ring-1 ring-inset ring-gray-200 text-gray-900 p-4 flex flex-col rounded-xl transition-all duration-300"
     >
           {/* Header */}
           <div className="flex flex-row-reverse pb-3 justify-between items-center">
@@ -915,29 +918,32 @@ function AISidePanelInline(props: AISidePanelProps) {
                   setMode('hover')
                   dispatchAIChatBot({ type: 'switchToHoverMode' })
                 }}
-                className="text-white/50 hover:text-white/70 hover:cursor-pointer bg-white/10 p-1 rounded-full items-center transition-colors"
+                className={AI_ICON_BUTTON_CLASS}
                 title="Switch to hover mode"
               >
                 <PanelTop size={18} />
               </button>
-              <X
-                size={20}
-                className="text-white/50 hover:cursor-pointer bg-white/10 p-1 rounded-full items-center"
+              <button
+                type="button"
+                aria-label={t('common.close')}
+                className={AI_ICON_BUTTON_CLASS}
                 onClick={closeSidePanel}
-              />
+              >
+                <X size={18} />
+              </button>
             </div>
             <div
               className={`flex space-x-2 items-center ${isInputDisabled ? 'animate-pulse' : ''}`}
             >
               <Image
-                className={`outline outline-1 outline-neutral-200/20 rounded-lg ${isInputDisabled ? 'animate-pulse' : ''}`}
+                className={`outline outline-1 outline-gray-200 rounded-lg ${isInputDisabled ? 'animate-pulse' : ''}`}
                 width={24}
                 src={learnhouseAI_icon}
                 alt=""
               />
-              <span className="text-sm font-semibold text-white/70">AI</span>
+              <span className="text-sm font-semibold text-gray-800">AI</span>
             </div>
-            <div className="bg-white/5 text-white/40 py-0.5 px-3 flex space-x-1 rounded-full items-center">
+            <div className="bg-gray-100 text-gray-600 py-0.5 px-3 flex space-x-1 rounded-full items-center">
               <FlaskConical size={14} />
               <span className="text-xs font-semibold antialiased">
                 {t('ai.experimental')}
@@ -946,7 +952,7 @@ function AISidePanelInline(props: AISidePanelProps) {
           </div>
 
           <div
-            className={`w-full h-0.5 bg-white/5 rounded-full mx-auto mb-3 ${isInputDisabled ? 'animate-pulse' : ''}`}
+            className={`w-full h-0.5 bg-gray-100 rounded-full mx-auto mb-3 ${isInputDisabled ? 'animate-pulse' : ''}`}
           ></div>
 
           {/* Messages Area */}
@@ -956,7 +962,7 @@ function AISidePanelInline(props: AISidePanelProps) {
               className="flex flex-col flex-1 w-full space-y-3 overflow-y-auto scroll-smooth pe-2"
               style={{
                 scrollbarWidth: 'thin',
-                scrollbarColor: 'rgba(255,255,255,0.1) transparent'
+                scrollbarColor: '#9ca3af transparent'
               }}
             >
               <AnimatePresence mode="popLayout">
@@ -999,17 +1005,17 @@ function AISidePanelInline(props: AISidePanelProps) {
                     </div>
                     <div className="flex items-center space-x-1.5 px-2 py-2">
                       <motion.span
-                        className="w-2 h-2 bg-purple-400/80 rounded-full"
+                        className="w-2 h-2 bg-teal-600 rounded-full"
                         animate={{ opacity: [0.4, 1, 0.4], scale: [0.85, 1, 0.85] }}
                         transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
                       />
                       <motion.span
-                        className="w-2 h-2 bg-purple-400/80 rounded-full"
+                        className="w-2 h-2 bg-teal-600 rounded-full"
                         animate={{ opacity: [0.4, 1, 0.4], scale: [0.85, 1, 0.85] }}
                         transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut", delay: 0.2 }}
                       />
                       <motion.span
-                        className="w-2 h-2 bg-purple-400/80 rounded-full"
+                        className="w-2 h-2 bg-teal-600 rounded-full"
                         animate={{ opacity: [0.4, 1, 0.4], scale: [0.85, 1, 0.85] }}
                         transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut", delay: 0.4 }}
                       />
@@ -1050,20 +1056,20 @@ function AISidePanelInline(props: AISidePanelProps) {
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         transition={{ duration: 0.2 }}
-                        className="flex justify-center items-center gap-1.5 text-white/30 text-xs py-2"
+                        className="flex justify-center items-center gap-1.5 text-gray-500 text-xs py-2"
                       >
                         <motion.span
-                          className="w-1 h-1 bg-white/40 rounded-full"
+                          className="w-1 h-1 bg-gray-500 rounded-full"
                           animate={{ opacity: [0.3, 0.8, 0.3] }}
                           transition={{ duration: 1, repeat: Infinity, ease: "easeInOut" }}
                         />
                         <motion.span
-                          className="w-1 h-1 bg-white/40 rounded-full"
+                          className="w-1 h-1 bg-gray-500 rounded-full"
                           animate={{ opacity: [0.3, 0.8, 0.3] }}
                           transition={{ duration: 1, repeat: Infinity, ease: "easeInOut", delay: 0.15 }}
                         />
                         <motion.span
-                          className="w-1 h-1 bg-white/40 rounded-full"
+                          className="w-1 h-1 bg-gray-500 rounded-full"
                           animate={{ opacity: [0.3, 0.8, 0.3] }}
                           transition={{ duration: 1, repeat: Infinity, ease: "easeInOut", delay: 0.3 }}
                         />
@@ -1097,13 +1103,13 @@ function AISidePanelInline(props: AISidePanelProps) {
           {/* Error state */}
           {aiChatBotState.error.isError && (
             <div className="flex items-center justify-center flex-1">
-              <div className="flex flex-col mx-auto w-full space-y-2 p-4 rounded-lg bg-red-500/20 outline outline-1 outline-red-500">
+              <div className="flex flex-col mx-auto w-full space-y-2 p-4 rounded-lg bg-red-50 outline outline-1 outline-red-200">
                 <AlertTriangle size={20} className="text-red-500" />
                 <div className="flex flex-col">
-                  <h3 className="font-semibold text-red-200">
+                  <h3 className="font-semibold text-red-800">
                     {t('common.something_wrong_happened')}
                   </h3>
-                  <span className="text-red-100 text-sm">
+                  <span className="text-red-700 text-sm">
                     {aiChatBotState.error.error_message}
                   </span>
                 </div>
@@ -1130,15 +1136,19 @@ function AISidePanelInline(props: AISidePanelProps) {
                 aria-label={t('ai.ask_ai_placeholder')}
                 placeholder={t('ai.ask_ai_placeholder')}
                 type="text"
-                className={inputClass}
+                className={AI_INPUT_CLASS}
               />
             </div>
             <div>
-              <MessageCircle
-                size={20}
-                className={`text-white/50 ${isInputDisabled ? 'opacity-30 cursor-not-allowed' : 'hover:cursor-pointer hover:text-white/70'}`}
-                onClick={() => !isInputDisabled && sendMessage(aiChatBotState.chatInputValue)}
-              />
+              <button
+                type="button"
+                aria-label="Send message"
+                disabled={isInputDisabled}
+                className={AI_SEND_BUTTON_CLASS}
+                onClick={() => sendMessage(aiChatBotState.chatInputValue)}
+              >
+                <MessageCircle size={20} />
+              </button>
             </div>
           </div>
         </motion.div>
@@ -1169,13 +1179,8 @@ const AISidePanelPlaceholder = (props: {
               delay: 0.17,
             }}
           >
-            <Image
-              width={80}
-              className="mx-auto"
-              src={learnhouseAI_logo_black}
-              alt=""
-            />
-            <p className="pt-3 text-lg font-semibold text-white/70 flex flex-col justify-center items-center">
+            <AIWelcomeLogo />
+            <p className="pt-3 text-lg font-semibold text-gray-800 flex flex-col justify-center items-center">
               <span className="flex items-center space-x-2">
                 <span>{t('common.hello')}</span>
                 <UserAvatar rounded="rounded-lg" border="border-2" width={28} shadow="shadow-none" />
