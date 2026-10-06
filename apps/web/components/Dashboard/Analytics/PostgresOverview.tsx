@@ -101,14 +101,19 @@ export default function PostgresOverview() {
       <LearnerProgressTable />
 
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)] gap-6">
-        <section className="bg-white rounded-xl nice-shadow p-5 min-w-0" aria-labelledby="course-performance-heading">
-          <h2 id="course-performance-heading" className="text-sm font-semibold text-gray-700">Course performance</h2>
+        <section className="bg-white rounded-xl nice-shadow p-5 min-w-0 h-96 flex flex-col" aria-labelledby="course-performance-heading">
+          <h2 id="course-performance-heading" className="shrink-0 text-sm font-semibold text-gray-700">Course performance</h2>
           {overview.courses.length === 0 ? (
             <p className="py-16 text-center text-sm text-gray-400">No courses yet</p>
           ) : (
-            <div className="mt-4 overflow-x-auto">
+            <div
+              className="mt-4 min-h-0 flex-1 overflow-auto overscroll-contain focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-300"
+              role="region"
+              aria-label="Course performance table"
+              tabIndex={0}
+            >
               <table className="w-full text-sm">
-                <thead>
+                <thead className="sticky top-0 z-10 bg-white">
                   <tr className="text-left text-xs text-gray-400 border-b border-gray-100">
                     <th className="pb-3 font-medium">Course</th>
                     <th className="pb-3 font-medium text-right">Enrollments</th>
@@ -134,12 +139,16 @@ export default function PostgresOverview() {
           )}
         </section>
 
-        <section className="bg-white rounded-xl nice-shadow p-5 min-w-0" aria-labelledby="recent-enrollments-heading">
-          <h2 id="recent-enrollments-heading" className="text-sm font-semibold text-gray-700">Recent enrollments</h2>
+        <section className="bg-white rounded-xl nice-shadow p-5 min-w-0 h-96 flex flex-col" aria-labelledby="recent-enrollments-heading">
+          <h2 id="recent-enrollments-heading" className="shrink-0 text-sm font-semibold text-gray-700">Recent enrollments</h2>
           {overview.recent_enrollments.length === 0 ? (
             <p className="py-16 text-center text-sm text-gray-400">No enrollments yet</p>
           ) : (
-            <ul className="mt-3 divide-y divide-gray-100">
+            <ul
+              className="mt-3 min-h-0 flex-1 overflow-y-auto overscroll-contain divide-y divide-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-300"
+              aria-label="Recent enrollments list"
+              tabIndex={0}
+            >
               {overview.recent_enrollments.map((row, index) => (
                 <li key={`${row.course_uuid}-${row.enrolled_at}-${index}`} className="py-3 first:pt-1">
                   <div className="flex items-start justify-between gap-3">
