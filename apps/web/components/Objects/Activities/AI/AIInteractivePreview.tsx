@@ -71,11 +71,14 @@ function getMermaid() {
   return mermaidPromise
 }
 
-export default function AIInteractivePreview({ kind, source, isStreaming = false }: {
+export default function AIInteractivePreview({ kind, source, isStreaming = false, theme = 'dark' }: {
   kind: PreviewKind
   source: string
   isStreaming?: boolean
+  theme?: 'light' | 'dark'
 }) {
+  const isLight = theme === 'light'
+  const statusClass = `px-3 py-5 text-sm ${isLight ? 'text-gray-600' : 'text-white/60'}`
   const [showSource, setShowSource] = React.useState(false)
   const [diagramResult, setDiagramResult] = React.useState<{
     source: string
@@ -106,8 +109,8 @@ export default function AIInteractivePreview({ kind, source, isStreaming = false
   const diagram = diagramResult?.source === source ? diagramResult.svg : undefined
   const diagramError = diagramResult?.source === source && diagramResult.error
   return (
-    <div className="my-3 overflow-hidden rounded-lg border border-white/15 bg-white/5 not-prose">
-      <div className="flex items-center justify-between gap-3 border-b border-white/10 px-3 py-2 text-xs text-white/70">
+    <div className={`my-3 overflow-hidden rounded-lg border ${isLight ? 'border-gray-200 bg-gray-50' : 'border-white/15 bg-white/5'} not-prose`}>
+      <div className={`flex items-center justify-between gap-3 border-b ${isLight ? 'border-gray-200 text-gray-700' : 'border-white/10 text-white/70'} px-3 py-2 text-xs`}>
         <span className="font-medium">{label}</span>
         {!isStreaming && (
           <button
@@ -115,18 +118,18 @@ export default function AIInteractivePreview({ kind, source, isStreaming = false
             aria-expanded={showSource}
             aria-controls={sourceId}
             onClick={() => setShowSource((shown) => !shown)}
-            className="rounded px-2 py-1 text-purple-300 hover:bg-white/10 hover:text-purple-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-300"
+            className={`rounded px-2 py-1 focus-visible:outline focus-visible:outline-2 ${isLight ? 'text-teal-700 hover:bg-teal-50 hover:text-teal-900 focus-visible:outline-teal-600' : 'text-purple-300 hover:bg-white/10 hover:text-purple-200 focus-visible:outline-purple-300'}`}
           >
             {showSource ? 'Hide source' : 'View source'}
           </button>
         )}
       </div>
       {isStreaming ? (
-        <p role="status" className="px-3 py-5 text-sm text-white/60">Creating {label.toLowerCase()}…</p>
+        <p role="status" className={statusClass}>Creating {label.toLowerCase()}…</p>
       ) : tooLarge ? (
-        <p className="px-3 py-5 text-sm text-white/60">Preview is too large to render.</p>
+        <p className={statusClass}>Preview is too large to render.</p>
       ) : unsupportedDiagram ? (
-        <p className="px-3 py-5 text-sm text-white/60">This diagram uses unsupported features. View its source for details.</p>
+        <p className={statusClass}>This diagram uses unsupported features. View its source for details.</p>
       ) : kind === 'html' ? (
         <iframe
           title="AI interactive example"
@@ -145,12 +148,12 @@ export default function AIInteractivePreview({ kind, source, isStreaming = false
           className="block h-80 w-full bg-white"
         />
       ) : (
-        <p role="status" className="px-3 py-5 text-sm text-white/60">
+        <p role="status" className={statusClass}>
           {diagramError ? 'Could not render this diagram. View its source for details.' : 'Rendering diagram…'}
         </p>
       )}
       {showSource && (
-        <pre id={sourceId} className="max-h-80 overflow-auto border-t border-white/10 bg-black/40 p-3 text-xs text-white/80"><code>{source}</code></pre>
+        <pre id={sourceId} className={`max-h-80 overflow-auto border-t ${isLight ? 'border-gray-200 bg-gray-50 text-gray-800' : 'border-white/10 bg-black/40 text-white/80'} p-3 text-xs`}><code>{source}</code></pre>
       )}
     </div>
   )
