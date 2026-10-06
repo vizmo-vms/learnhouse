@@ -1,6 +1,8 @@
 'use client'
 import FolderThumbnail from '@components/Objects/Thumbnails/FolderThumbnail'
 import LibraryItemCard from '@components/Dashboard/Library/LibraryItemCard'
+import LibraryPagination from '@components/Dashboard/Library/LibraryPagination'
+import { libraryPage } from '@/lib/library/pagination'
 import CourseThumbnail, { removeCoursePrefix } from '@components/Objects/Thumbnails/CourseThumbnail'
 import { getUriWithOrg } from '@services/config/config'
 import { removeFolderContent, removeOrgRootContent } from '@services/folders/folders'
@@ -36,6 +38,8 @@ export default function LibrarySearchResults({ results, isLoading, orgslug, org_
 
   const folders = results?.folders || []
   const items = results?.items || []
+  const [pageIndex, setPageIndex] = React.useState(0)
+  const page = libraryPage(folders, items, pageIndex)
 
   const removeItem = async (item: any) => {
     try {
@@ -70,9 +74,10 @@ export default function LibrarySearchResults({ results, isLoading, orgslug, org_
 
   return (
     <div className="flex flex-col gap-7">
-      {folders.length > 0 && (
+      <LibraryPagination {...page} onPageChange={setPageIndex} />
+      {page.folders.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 items-start">
-          {folders.map((folder: any) => (
+          {page.folders.map((folder: any) => (
             <div key={folder.folder_uuid} className="flex flex-col">
               <FolderThumbnail folder={folder} orgslug={orgslug} org_id={org_id} isDashboard onChanged={onChanged} />
               <ContextPath path={folder.path} />
@@ -81,9 +86,9 @@ export default function LibrarySearchResults({ results, isLoading, orgslug, org_
         </div>
       )}
 
-      {items.length > 0 && (
+      {page.items.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 items-start">
-          {items.map((item: any) => {
+          {page.items.map((item: any) => {
             const resource = item.resource || {}
             return (
               <div key={`${item.resource_uuid}-${(item.path || []).map((p: any) => p.folder_uuid).join('-')}`} className="flex flex-col">

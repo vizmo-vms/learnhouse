@@ -1,6 +1,8 @@
 'use client'
 import FolderThumbnail from '@components/Objects/Thumbnails/FolderThumbnail'
 import LibraryItemCard from '@components/Dashboard/Library/LibraryItemCard'
+import LibraryPagination from '@components/Dashboard/Library/LibraryPagination'
+import { libraryPage, reorderLibraryPage } from '@/lib/library/pagination'
 import CourseThumbnail, { removeCoursePrefix } from '@components/Objects/Thumbnails/CourseThumbnail'
 import ConfirmationModal from '@components/Objects/StyledElements/ConfirmationModal/ConfirmationModal'
 import { getUriWithOrg } from '@services/config/config'
@@ -72,6 +74,8 @@ export default function LibraryGrid({
   onReorderItems,
 }: Props) {
   const { t } = useTranslation()
+  const [pageIndex, setPageIndex] = React.useState(0)
+  const page = libraryPage(folders, items, pageIndex)
   const isEmpty = folders.length === 0 && items.length === 0
   const dragEnabled = isManual && !!onReorderFolders
   const itemsDragEnabled = isManual && !!onReorderItems
@@ -79,18 +83,14 @@ export default function LibraryGrid({
   const handleDragEnd = (result: DropResult) => {
     if (!result.destination || !onReorderFolders) return
     if (result.destination.index === result.source.index) return
-    const reordered = Array.from(folders)
-    const [moved] = reordered.splice(result.source.index, 1)
-    reordered.splice(result.destination.index, 0, moved)
+    const reordered = reorderLibraryPage(folders, result.source.index, result.destination.index, page.folderOffset)
     onReorderFolders(reordered)
   }
 
   const handleItemsDragEnd = (result: DropResult) => {
     if (!result.destination || !onReorderItems) return
     if (result.destination.index === result.source.index) return
-    const reordered = Array.from(items)
-    const [moved] = reordered.splice(result.source.index, 1)
-    reordered.splice(result.destination.index, 0, moved)
+    const reordered = reorderLibraryPage(items, result.source.index, result.destination.index, page.itemOffset)
     onReorderItems(reordered)
   }
 
@@ -111,8 +111,9 @@ export default function LibraryGrid({
 
   return (
     <div className="flex flex-col gap-7">
+      <LibraryPagination {...page} onPageChange={setPageIndex} />
       {/* Folders — always on top, in their own compact grid (Drive-like) */}
-      {folders.length > 0 && (
+      {page.folders.length > 0 && (
         <section>
           {dragEnabled ? (
             <DragDropContext onDragEnd={handleDragEnd}>
@@ -123,7 +124,7 @@ export default function LibraryGrid({
                     {...provided.droppableProps}
                     className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3"
                   >
-                    {folders.map((folder: any, i: number) => (
+                    {page.folders.map((folder: any, i: number) => (
                       <Draggable key={folder.folder_uuid} draggableId={folder.folder_uuid} index={i}>
                         {(dragProvided, snapshot) => (
                           <div
@@ -157,7 +158,7 @@ export default function LibraryGrid({
             </DragDropContext>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-              {folders.map((folder: any) => (
+              {page.folders.map((folder: any) => (
                 <FolderThumbnail
                   key={folder.folder_uuid}
                   folder={folder}
@@ -173,7 +174,7 @@ export default function LibraryGrid({
       )}
 
       {/* Resources — a separate grid of full-size cards below */}
-      {items.length > 0 && (
+      {page.items.length > 0 && (
         <section>
           {itemsDragEnabled ? (
             <DragDropContext onDragEnd={handleItemsDragEnd}>
@@ -184,7 +185,7 @@ export default function LibraryGrid({
                     {...provided.droppableProps}
                     className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 items-start"
                   >
-                    {items.map((item: any, i: number) => (
+                    {page.items.map((item: any, i: number) => (
                       <Draggable key={itemKey(item)} draggableId={String(itemKey(item))} index={i}>
                         {(dragProvided, snapshot) => (
                           <div
@@ -216,7 +217,7 @@ export default function LibraryGrid({
             </DragDropContext>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 items-start">
-              {items.map((item: any) =>
+              {page.items.map((item: any) =>
                 item.resource_type === 'courses' ? (
                   <CourseItem key={item.resource_uuid} item={item} orgslug={orgslug} onRemove={() => onRemoveItem(item.resource_uuid)} />
                 ) : (
