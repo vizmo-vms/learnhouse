@@ -1,13 +1,12 @@
 'use client'
 import React, { useState, useMemo } from 'react'
 import dynamic from 'next/dynamic'
-import { useTranslation } from 'react-i18next'
 import { useOrg } from '@components/Contexts/OrgContext'
 import { useCourse } from '@components/Contexts/CourseContext'
 import { useAnalyticsStatus } from '../useAnalyticsDashboard'
-import FeatureGate from '@components/Dashboard/Shared/FeatureGate/FeatureGate'
 import { useResolvedFeature } from '@components/Hooks/useResolvedFeature'
 import ExportAnalyticsButton from '../AnalyticsExport'
+import LearnerProgressTable from '../LearnerProgressTable'
 
 const CourseOverviewStats = dynamic(() => import('./CourseOverviewStats'))
 const CourseEnrollmentTrend = dynamic(() => import('./CourseEnrollmentTrend'))
@@ -57,7 +56,6 @@ export type ActivityInfo = {
 export type ActivityMap = Record<string, ActivityInfo>
 
 export default function CourseAnalyticsTab({ courseUUID }: { courseUUID: string }) {
-  const { t } = useTranslation()
   const [days, setDays] = useState('30')
   const org = useOrg() as any
   const courseContext = useCourse() as any
@@ -92,25 +90,10 @@ export default function CourseAnalyticsTab({ courseUUID }: { courseUUID: string 
     return map
   }, [courseContext?.courseStructure])
 
-  if (courseAnalyticsGate.reason) {
+  if (!isConfigured || courseAnalyticsGate.reason) {
     return (
-      <div className="p-6">
-        <FeatureGate feature="course_analytics">
-          <></>
-        </FeatureGate>
-      </div>
-    )
-  }
-
-  if (analyticsStatus && !isConfigured) {
-    return (
-      <div className="flex flex-col items-center justify-center h-96 text-center p-6">
-        <div className="bg-white rounded-2xl border border-gray-100 p-10 max-w-md nice-shadow">
-          <h2 className="text-lg font-bold text-gray-900 mb-2">{t('analytics.course_analytics.not_configured_title')}</h2>
-          <p className="text-sm text-gray-500 leading-relaxed">
-            {t('analytics.course_analytics.not_configured_desc')}
-          </p>
-        </div>
+      <div className="p-4 sm:p-6 max-w-[1600px] mx-auto w-full">
+        <LearnerProgressTable courseUUID={courseUUID} />
       </div>
     )
   }
@@ -119,6 +102,7 @@ export default function CourseAnalyticsTab({ courseUUID }: { courseUUID: string 
 
   return (
     <div className="p-6 space-y-6 max-w-[1600px] mx-auto w-full">
+      <LearnerProgressTable courseUUID={courseUUID} />
       {/* Date range selector */}
       <div className="flex justify-end items-center gap-2">
         <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5">

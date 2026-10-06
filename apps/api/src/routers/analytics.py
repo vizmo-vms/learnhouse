@@ -2,36 +2,40 @@ import csv
 import io
 import logging
 import re
+from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlmodel import select
-from config.config import get_learnhouse_config
 from sqlmodel.ext.asyncio.session import AsyncSession
+
+from config.config import get_learnhouse_config
 from src.core.events.database import get_db_session
-from src.db.users import PublicUser, AnonymousUser, APITokenUser, User
-from src.db.user_organizations import UserOrganization
-from src.db.roles import Role
 from src.db.courses.courses import Course
+from src.db.roles import Role
 from src.db.trail_runs import TrailRun
+from src.db.user_organizations import UserOrganization
+from src.db.users import AnonymousUser, APITokenUser, PublicUser, User
 from src.security.auth import get_current_user, resolve_acting_user_id
-from src.security.superadmin import is_user_superadmin
 from src.security.features_utils.plan_check import get_org_plan
 from src.security.features_utils.plans import plan_meets_requirement
-import httpx
+from src.security.superadmin import is_user_superadmin
 from src.services.analytics.analytics import track
 from src.services.analytics.cache import get_cached_result, set_cached_result
 from src.services.analytics.enrichment import enrich_with_metadata
 from src.services.analytics.events import ALLOWED_FRONTEND_EVENTS
-from src.services.orgs.users import _csv_safe
+from src.services.analytics.progress import learner_progress
+from src.services.analytics.progress import postgres_overview as _query_postgres_overview
 from src.services.analytics.queries import (
-    ALL_QUERIES,
     ADVANCED_QUERIES,
-    DETAIL_QUERIES,
-    COURSE_QUERIES,
+    ALL_QUERIES,
     COURSE_DETAIL_QUERIES,
+    COURSE_QUERIES,
+    DETAIL_QUERIES,
 )
+from src.services.orgs.users import _csv_safe
 
 logger = logging.getLogger(__name__)
 
@@ -473,7 +477,7 @@ async def query_dashboard(
 @router.get(
     "/dashboard/db/{query_name}",
     summary="Run a PostgreSQL-backed dashboard query",
-    description="Executes a predefined PostgreSQL analytics query. The basic overview is available to organization admins; advanced queries require a Pro plan or higher.",
+    description="Executes a predefined PostgreSQL analytics query. Overview and learner progress are available to organization admins; advanced queries require a Pro plan or higher.",
     responses={
         200: {"description": "Query results from PostgreSQL"},
         401: {"description": "Authentication required"},
@@ -487,6 +491,14 @@ async def query_dashboard_db(
     request: Request,
     current_user: PublicUser | AnonymousUser | APITokenUser = Depends(get_current_user),
     db_session: AsyncSession = Depends(get_db_session),
+    course_uuid: str | None = Query(default=None, max_length=100),
+    search: str = Query(default="", max_length=100),
+    status: Literal[
+        "NOT_ENROLLED", "STATUS_IN_PROGRESS", "STATUS_COMPLETED",
+        "STATUS_PAUSED", "STATUS_CANCELLED",
+    ] | None = None,
+    page: int = Query(default=1, ge=1),
+    per_page: int = Query(default=25, ge=1, le=100),
 ):
     if isinstance(current_user, AnonymousUser):
         raise HTTPException(status_code=401, detail="Authentication required")
@@ -495,13 +507,25 @@ async def query_dashboard_db(
 
     await _verify_org_admin(resolve_acting_user_id(current_user), org_id, db_session)
 
-    DB_QUERIES = {"basic_overview", "grade_distribution"}
+    DB_QUERIES = {"basic_overview", "learner_progress", "grade_distribution"}
 
     if query_name not in DB_QUERIES:
         raise HTTPException(status_code=404, detail="Unknown query")
 
     if query_name == "basic_overview":
         return await _query_postgres_overview(org_id, db_session)
+
+    if query_name == "learner_progress":
+        course_id = None
+        if course_uuid:
+            full_uuid = course_uuid if course_uuid.startswith("course_") else f"course_{course_uuid}"
+            course_id = (await db_session.execute(select(Course.id).where(
+                Course.course_uuid == full_uuid, Course.org_id == org_id
+            ))).scalar_one_or_none()
+            if course_id is None:
+                raise HTTPException(status_code=404, detail="Course not found")
+        return await learner_progress(db_session, org_id, resolve_acting_user_id(current_user),
+                                      course_id, search, status, page, per_page)
 
     # All DB queries are Pro+ gated
     current_plan = await get_org_plan(org_id, db_session)
@@ -515,94 +539,6 @@ async def query_dashboard_db(
         return await _query_grade_distribution(org_id, db_session)
 
     raise HTTPException(status_code=404, detail="Unknown query")  # pragma: no cover
-
-
-async def _query_postgres_overview(org_id: int, db_session: AsyncSession):
-    """Basic all-time analytics from LearnHouse's durable PostgreSQL data."""
-    from sqlalchemy import text
-
-    summary_result = await db_session.execute(
-        text(
-            """
-            SELECT
-                (SELECT count(*) FROM userorganization WHERE org_id = :org_id) AS learners,
-                (SELECT count(*) FROM course WHERE org_id = :org_id) AS courses,
-                (SELECT count(*) FROM trailrun WHERE org_id = :org_id) AS enrollments,
-                (SELECT count(*) FROM trailrun
-                 WHERE org_id = :org_id AND status = 'STATUS_COMPLETED') AS completions,
-                (SELECT count(*) FROM trailstep
-                 WHERE org_id = :org_id AND complete = true) AS completed_activities
-            """
-        ),
-        {"org_id": org_id},
-    )
-    summary = dict(summary_result.mappings().one())
-    enrollments = summary["enrollments"] or 0
-    summary["completion_rate"] = round(
-        (summary["completions"] or 0) / enrollments * 100, 1
-    ) if enrollments else 0.0
-
-    courses_result = await db_session.execute(
-        text(
-            """
-            SELECT
-                c.course_uuid,
-                c.name,
-                c.published,
-                count(DISTINCT tr.id) AS enrollments,
-                count(DISTINCT tr.id) FILTER (
-                    WHERE tr.status = 'STATUS_COMPLETED'
-                ) AS completions,
-                count(DISTINCT ca.id) AS activities,
-                CASE
-                    WHEN count(DISTINCT tr.id) * count(DISTINCT ca.id) = 0 THEN 0
-                    ELSE round(
-                        100.0 * count(DISTINCT ts.id) FILTER (WHERE ts.complete = true)
-                        / (count(DISTINCT tr.id) * count(DISTINCT ca.id)),
-                        1
-                    )
-                END AS average_progress
-            FROM course c
-            LEFT JOIN trailrun tr
-                ON tr.course_id = c.id AND tr.org_id = :org_id
-            LEFT JOIN chapteractivity ca
-                ON ca.course_id = c.id AND ca.org_id = :org_id
-            LEFT JOIN trailstep ts
-                ON ts.course_id = c.id AND ts.org_id = :org_id
-            WHERE c.org_id = :org_id
-            GROUP BY c.id, c.course_uuid, c.name, c.published
-            ORDER BY enrollments DESC, c.name ASC
-            """
-        ),
-        {"org_id": org_id},
-    )
-
-    recent_result = await db_session.execute(
-        text(
-            """
-            SELECT
-                tr.creation_date AS enrolled_at,
-                tr.status,
-                c.course_uuid,
-                c.name AS course_name,
-                COALESCE(NULLIF(trim(concat_ws(' ', u.first_name, u.last_name)), ''),
-                         u.username, 'Learner') AS learner_name
-            FROM trailrun tr
-            JOIN course c ON c.id = tr.course_id
-            JOIN "user" u ON u.id = tr.user_id
-            WHERE tr.org_id = :org_id
-            ORDER BY tr.creation_date DESC
-            LIMIT 10
-            """
-        ),
-        {"org_id": org_id},
-    )
-
-    return {
-        "summary": summary,
-        "courses": [dict(row) for row in courses_result.mappings().all()],
-        "recent_enrollments": [dict(row) for row in recent_result.mappings().all()],
-    }
 
 
 async def _query_grade_distribution(org_id: int, db_session: AsyncSession):

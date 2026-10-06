@@ -91,6 +91,13 @@ async def seed_activity(db: AsyncSession, org, course, regular_user):
 
 
 class TestUserDossier:
+    async def test_self_hosted_admin_can_read_without_tinybird(self, client, regular_user, seed_activity):
+        # Exercise the real OSS feature check, rather than mocking it away.
+        with patch("src.routers.audit._get_read_client", return_value=None):
+            resp = await client.get(f"/api/v1/audit/user/{regular_user.id}?org_id=1")
+        assert resp.status_code == 200
+        assert resp.json()["summary"]["courses_enrolled"] == 1
+
     async def test_admin_gets_full_dossier(self, client, regular_user, seed_activity):
         with _bypass_plan():
             resp = await client.get(f"/api/v1/audit/user/{regular_user.id}?org_id=1")

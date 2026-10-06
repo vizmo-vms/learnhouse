@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import Link from 'next/link'
 import {
   BookOpen,
   CheckCircle,
@@ -9,6 +10,7 @@ import {
   UsersThree,
 } from '@phosphor-icons/react'
 import { useAnalyticsDbQuery } from './useAnalyticsDashboard'
+import LearnerProgressTable from './LearnerProgressTable'
 
 type Summary = {
   learners: number
@@ -81,13 +83,6 @@ export default function PostgresOverview() {
 
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto w-full">
-      <div className="flex items-center justify-between gap-4 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3">
-        <p className="text-sm text-blue-900">
-          Basic all-time reporting from LearnHouse data. Page views and time spent require an event analytics service.
-        </p>
-        <span className="hidden sm:inline text-xs font-medium text-blue-700 whitespace-nowrap">PostgreSQL</span>
-      </div>
-
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         {stats.map(({ label, value, icon: Icon }) => (
           <div key={label} className="bg-white rounded-xl nice-shadow p-4 min-w-0">
@@ -102,6 +97,8 @@ export default function PostgresOverview() {
           </div>
         ))}
       </div>
+
+      <LearnerProgressTable />
 
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)] gap-6">
         <section className="bg-white rounded-xl nice-shadow p-5 min-w-0" aria-labelledby="course-performance-heading">
@@ -123,7 +120,7 @@ export default function PostgresOverview() {
                   {overview.courses.map((course) => (
                     <tr key={course.course_uuid} className="border-b border-gray-50 last:border-0">
                       <td className="py-3 pr-4">
-                        <div className="font-medium text-gray-800">{course.name}</div>
+                        <Link className="font-medium text-gray-800 hover:underline" href={`/dash/courses/course/${course.course_uuid.replace('course_', '')}/analytics`}>{course.name}</Link>
                         <div className="text-xs text-gray-400">{course.activities} activities · {course.published ? 'Published' : 'Draft'}</div>
                       </td>
                       <td className="py-3 text-right text-gray-600">{number(course.enrollments)}</td>
