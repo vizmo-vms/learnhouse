@@ -200,6 +200,7 @@ function FolderView({ orgslug, org_id, folderid, initialFolder }: Props) {
 
         {searching ? (
           <LibrarySearchResults
+            key={`${query.trim()}:${filter}`}
             results={filteredSearch ? { folders: filteredSearch.visibleFolders, items: filteredSearch.visibleItems } : null}
             isLoading={searchLoading}
             orgslug={orgslug}
@@ -208,6 +209,7 @@ function FolderView({ orgslug, org_id, folderid, initialFolder }: Props) {
           />
         ) : (
           <LibraryGrid
+            key={`${folderid}:${filter}:${sortMode}`}
             folders={visibleFolders}
             items={visibleItems}
             orgslug={orgslug}

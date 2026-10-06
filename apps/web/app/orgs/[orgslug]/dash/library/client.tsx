@@ -137,6 +137,7 @@ function LibraryHome({ orgslug, org_id, initialFolders }: Props) {
 
         {searching ? (
           <LibrarySearchResults
+            key={`${query.trim()}:${filter}`}
             results={filteredSearch ? { folders: filteredSearch.visibleFolders, items: filteredSearch.visibleItems } : null}
             isLoading={searchLoading}
             orgslug={orgslug}
@@ -145,6 +146,7 @@ function LibraryHome({ orgslug, org_id, initialFolders }: Props) {
           />
         ) : (
           <LibraryGrid
+            key={`${filter}:${sortMode}`}
             folders={visibleFolders}
             items={visibleItems}
             orgslug={orgslug}

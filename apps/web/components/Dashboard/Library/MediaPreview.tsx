@@ -55,9 +55,9 @@ function IconTile({ Icon }: { Icon: React.ComponentType<any> }) {
 function YouTubePreview({ id }: { id: string }) {
   return (
     <div
-      className="relative aspect-video bg-gray-900 bg-cover bg-center"
-      style={{ backgroundImage: `url(https://img.youtube.com/vi/${id}/hqdefault.jpg)` }}
+      className="relative aspect-video bg-gray-900 overflow-hidden"
     >
+      <img src={`https://img.youtube.com/vi/${id}/hqdefault.jpg`} alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" />
       <div className="absolute inset-0 flex items-center justify-center">
         <div className="flex items-center justify-center w-11 h-11 rounded-full bg-black/55 backdrop-blur-sm">
           <Play size={20} weight="fill" className="text-white translate-x-[1px]" />
@@ -81,6 +81,7 @@ function ScreenshotPreview({ url, video }: { url: string; video?: boolean }) {
         src={shot}
         alt=""
         loading="lazy"
+        decoding="async"
         referrerPolicy="no-referrer"
         onError={() => setFailed(true)}
         className="absolute inset-0 h-full w-full object-cover"
@@ -149,7 +150,7 @@ function EmbedPreview({ url, video }: { url: string; video?: boolean }) {
     return (
       <div className="relative aspect-video bg-gray-50 overflow-hidden">
         { }
-        <img src={og} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setOgFailed(true)} className="absolute inset-0 h-full w-full object-cover" />
+        <img src={og} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setOgFailed(true)} className="absolute inset-0 h-full w-full object-cover" />
         {video && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <div className="flex items-center justify-center w-11 h-11 rounded-full bg-black/45 backdrop-blur-sm">
@@ -164,16 +165,43 @@ function EmbedPreview({ url, video }: { url: string; video?: boolean }) {
   return <ScreenshotPreview url={url} video={video} />
 }
 
-export default function MediaPreview({
-  resource,
-  orgUuid,
-  resourceUuid,
-}: {
+type Props = {
   resource: any
   orgUuid?: string
   /** Fallback uuid when the resource lacks media_uuid (item.resource_uuid). */
   resourceUuid?: string
-}) {
+}
+
+// Mount expensive previews only near the viewport. This also defers PDF
+// rendering, video metadata and link-preview requests, which img lazy loading
+// alone cannot control. The fixed aspect ratio prevents layout shifts.
+export default function MediaPreview(props: Props) {
+  const ref = React.useRef<HTMLDivElement>(null)
+  const [visible, setVisible] = React.useState(false)
+  React.useEffect(() => {
+    if (!ref.current) return
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        setVisible(true)
+        observer.disconnect()
+      }
+    }, { rootMargin: '200px' })
+    observer.observe(ref.current)
+    return () => observer.disconnect()
+  }, [])
+
+  return (
+    <div ref={ref} className="aspect-video">
+      {visible ? <MediaPreviewContent key={props.resource?.media_uuid || props.resourceUuid || props.resource?.url} {...props} /> : <IconTile Icon={tileIcon(props.resource)} />}
+    </div>
+  )
+}
+
+function MediaPreviewContent({
+  resource,
+  orgUuid,
+  resourceUuid,
+}: Props) {
   const Icon = tileIcon(resource)
   const kind = mediaKind(resource)
 
@@ -194,10 +222,9 @@ export default function MediaPreview({
 
   if (fileUrl && kind === 'image') {
     return (
-      <div
-        className="relative aspect-video bg-gray-50 bg-cover bg-center"
-        style={{ backgroundImage: `url(${fileUrl})` }}
-      />
+      <div className="relative aspect-video bg-gray-50 overflow-hidden">
+        <img src={fileUrl} alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" />
+      </div>
     )
   }
 
