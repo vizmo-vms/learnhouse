@@ -25,7 +25,8 @@ export default function UserDossier({ dossier }: { dossier: any }) {
   const security = dossier?.security || {}
   const membership = dossier?.membership || {}
   const behavior = dossier?.behavior || {}
-  const totalSeconds = Number(behavior?.user_time_total?.[0]?.total_seconds || 0)
+  const recordedSeconds = behavior?.user_time_total?.[0]?.total_seconds
+  const totalSeconds = recordedSeconds == null ? null : Number(recordedSeconds)
 
   return (
     <div className="space-y-6">

@@ -1,9 +1,10 @@
 import { getUserAvatarMediaDirectory } from '@services/media/media'
+import { parseApiDate } from '@lib/format'
 
 export function fmtDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '—'
   try {
-    const d = new Date(dateStr)
+    const d = parseApiDate(dateStr)
     if (isNaN(d.getTime())) return '—'
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   } catch {
@@ -14,7 +15,7 @@ export function fmtDate(dateStr: string | null | undefined): string {
 export function fmtDateTime(dateStr: string | null | undefined): string {
   if (!dateStr) return '—'
   try {
-    const d = new Date(dateStr)
+    const d = parseApiDate(dateStr)
     if (isNaN(d.getTime())) return '—'
     return d.toLocaleString('en-US', {
       month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit',
@@ -26,6 +27,7 @@ export function fmtDateTime(dateStr: string | null | undefined): string {
 
 /** Seconds -> compact human duration (e.g. "2h 14m", "45m", "30s"). */
 export function fmtDuration(seconds: number | null | undefined): string {
+  if (seconds == null) return '—'
   const s = Number(seconds || 0)
   if (!s || s < 0) return '0m'
   const h = Math.floor(s / 3600)

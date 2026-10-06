@@ -11,6 +11,17 @@ import dayjs from 'dayjs'
 import relativeTime from 'dayjs/plugin/relativeTime'
 import { baseCode } from './direction'
 
+/** LearnHouse's naive backend datetimes are UTC; date-only values are calendar days. */
+export function parseApiDate(value: string): Date {
+  let normalized = value.replace(' ', 'T')
+  if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    normalized += 'T00:00:00'
+  } else if (/^\d{4}-\d{2}-\d{2}T/.test(normalized) && !/(Z|[+-]\d{2}:\d{2})$/i.test(normalized)) {
+    normalized += 'Z'
+  }
+  return new Date(normalized)
+}
+
 dayjs.extend(relativeTime)
 
 /** Mirrors LOCALE_LOADERS in lib/i18n.ts. English is dayjs's built-in default. */
