@@ -3,6 +3,7 @@
 import React, { useId, useState } from 'react'
 import Link from 'next/link'
 import { useAnalyticsDbQuery } from './useAnalyticsDashboard'
+import { parseApiDate } from '@lib/format'
 
 type ProgressRow = {
   user_id: number
@@ -37,7 +38,7 @@ const statusLabels: Record<string, string> = {
 
 function date(value: string | null, includeTime = false) {
   if (!value) return '—'
-  const parsed = new Date(value.replace(' ', 'T'))
+  const parsed = parseApiDate(value)
   return Number.isNaN(parsed.getTime()) ? '—' : includeTime ? parsed.toLocaleString() : parsed.toLocaleDateString()
 }
 
