@@ -1,8 +1,8 @@
 """Per-student audit & analytics router.
 
 Org-admin-only endpoints that expose a complete, legally-defensible record of a
-student's learning activity (see ``services/audit/dossier.py``). Gated behind the
-same advanced-analytics plan requirement as the rest of the analytics surface.
+student's learning activity (see ``services/audit/dossier.py``). Durable learning
+records are available in self-hosted deployments; SaaS retains plan checks.
 
 Security: every endpoint verifies the CALLER is an admin of ``org_id`` AND that the
 TARGET user is a member of that same org, so an admin can never read a user who
@@ -18,23 +18,23 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.core.events.database import get_db_session
-from src.db.users import PublicUser, AnonymousUser, APITokenUser
 from src.db.user_organizations import UserOrganization
-from src.security.auth import get_current_user, resolve_acting_user_id
-from src.security.superadmin import is_user_superadmin
-from src.security.features_utils.plan_check import get_org_plan
-from src.security.features_utils.plans import plan_meets_requirement
-from src.services.orgs.users import _csv_safe
-from src.services.audit.dossier import build_user_dossier, build_users_summary
-from src.services.analytics.queries import USER_QUERIES
+from src.db.users import AnonymousUser, APITokenUser, PublicUser
 
 # Reuse the battle-tested RBAC + Tinybird helpers from the analytics router
 # rather than duplicating them.
 from src.routers.analytics import (
-    _verify_org_membership,
-    _verify_org_admin,
     _get_read_client,
+    _verify_org_admin,
+    _verify_org_membership,
 )
+from src.security.auth import get_current_user, resolve_acting_user_id
+from src.security.features_utils.plan_check import get_org_plan
+from src.security.features_utils.plans import plan_meets_requirement
+from src.security.superadmin import is_user_superadmin
+from src.services.analytics.queries import USER_QUERIES
+from src.services.audit.dossier import build_user_dossier, build_users_summary
+from src.services.orgs.users import _csv_safe
 
 logger = logging.getLogger(__name__)
 
@@ -54,10 +54,10 @@ async def _require_admin(current_user, org_id: int, db_session: AsyncSession) ->
 
 
 async def _enforce_plan(org_id: int, db_session: AsyncSession) -> None:
-    """Gate the audit feature behind the Pro plan."""
+    """Self-hosted learning records are core analytics; retain SaaS plan checks."""
     from src.security.features_utils.plan_check import _check_mode_bypass
 
-    bypass = _check_mode_bypass("analytics_advanced")
+    bypass = _check_mode_bypass("analytics")
     if bypass is None:  # SaaS mode — enforce plan
         current_plan = await get_org_plan(org_id, db_session)
         if not plan_meets_requirement(current_plan, "pro"):

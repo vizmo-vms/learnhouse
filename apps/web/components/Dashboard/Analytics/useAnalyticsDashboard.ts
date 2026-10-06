@@ -64,7 +64,8 @@ export function useAnalyticsDetail(
 
 export function useAnalyticsDbQuery(
   queryName: string,
-  extraParams: Record<string, string> = {}
+  extraParams: Record<string, string> = {},
+  refreshInterval = 0
 ) {
   const org = useOrg() as any
   const session = useLHSession() as any
@@ -80,6 +81,7 @@ export function useAnalyticsDbQuery(
       fetcher(`${getAPIUrl()}analytics/dashboard/db/${queryName}?${paramsStr}`, token),
     enabled: !!(orgId && token),
     staleTime: STALE_TIME,
+    refetchInterval: refreshInterval || false,
   })
 }
 

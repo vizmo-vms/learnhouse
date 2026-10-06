@@ -18,30 +18,29 @@ import logging
 import re
 from typing import Awaitable, Callable, Optional
 
-from sqlmodel import select, func
+from sqlmodel import func, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from src.db.users import User
-from src.db.user_organizations import UserOrganization
-from src.db.usergroup_user import UserGroupUser
-from src.db.usergroups import UserGroup
-from src.db.roles import Role
-from src.db.user_audit_events import UserAuditEvent, UserAuditEventType
-from src.db.trail_runs import TrailRun
-from src.db.trail_steps import TrailStep
-from src.db.courses.courses import Course
+from src.db.code_submissions import CodeSubmission
+from src.db.communities.communities import Community
+from src.db.communities.discussion_comments import DiscussionComment
+from src.db.communities.discussions import Discussion
 from src.db.courses.activities import Activity
 from src.db.courses.assignments import (
     Assignment,
     AssignmentTask,
-    AssignmentUserSubmission,
     AssignmentTaskSubmission,
+    AssignmentUserSubmission,
 )
-from src.db.code_submissions import CodeSubmission
 from src.db.courses.certifications import CertificateUser, Certifications
-from src.db.communities.communities import Community
-from src.db.communities.discussions import Discussion
-from src.db.communities.discussion_comments import DiscussionComment
+from src.db.courses.courses import Course
+from src.db.roles import Role
+from src.db.trail_runs import TrailRun
+from src.db.user_audit_events import UserAuditEvent, UserAuditEventType
+from src.db.user_organizations import UserOrganization
+from src.db.usergroup_user import UserGroupUser
+from src.db.usergroups import UserGroup
+from src.db.users import User
 from src.services.analytics.enrichment import enrich_with_metadata
 from src.services.audit.answers import (
     answer_digest,
@@ -226,57 +225,12 @@ async def _connections_and_timeline(
 
 
 async def _course_progress(db_session: AsyncSession, user_id: int, org_id: int) -> list[dict]:
-    runs = (await db_session.execute(
-        select(TrailRun).where(
-            TrailRun.user_id == user_id, TrailRun.org_id == org_id
-        )
-    )).scalars().all()
-    if not runs:
-        return []
+    from src.services.analytics.progress import enrollment_progress, progress_row
 
-    course_ids = [r.course_id for r in runs]
-    courses = {
-        c.id: c for c in (await db_session.execute(
-            select(Course).where(Course.id.in_(course_ids))  # type: ignore[attr-defined]
-        )).scalars().all()
-    }
-
-    # Total activities per course (one grouped query).
-    total_by_course = dict((await db_session.execute(
-        select(Activity.course_id, func.count(Activity.id))
-        .where(Activity.course_id.in_(course_ids))  # type: ignore[attr-defined]
-        .group_by(Activity.course_id)
-    )).all())
-
-    # Completed steps per course for this user (one grouped query).
-    completed_by_course = dict((await db_session.execute(
-        select(TrailStep.course_id, func.count(TrailStep.id))
-        .where(
-            TrailStep.user_id == user_id,
-            TrailStep.course_id.in_(course_ids),  # type: ignore[attr-defined]
-            TrailStep.complete == True,  # noqa: E712
-        )
-        .group_by(TrailStep.course_id)
-    )).all())
-
-    result = []
-    for r in runs:
-        course = courses.get(r.course_id)
-        total = int(total_by_course.get(r.course_id, 0) or 0)
-        done = int(completed_by_course.get(r.course_id, 0) or 0)
-        pct = round(done / total * 100, 1) if total else 0.0
-        result.append({
-            "course_id": r.course_id,
-            "course_uuid": course.course_uuid if course else None,
-            "course_name": course.name if course else None,
-            "status": r.status.value if hasattr(r.status, "value") else str(r.status),
-            "enrolled_at": r.creation_date,
-            "updated_at": r.update_date,
-            "activities_completed": done,
-            "activities_total": total,
-            "progress_pct": pct,
-        })
-    return result
+    rows = (await db_session.execute(
+        enrollment_progress(org_id).where(TrailRun.user_id == user_id)
+    )).mappings().all()
+    return [progress_row(row) for row in rows]
 
 
 def _task_row(index: int, task, ts, include_raw: bool) -> dict:

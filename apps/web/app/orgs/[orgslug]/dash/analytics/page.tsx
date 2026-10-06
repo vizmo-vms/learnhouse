@@ -16,6 +16,7 @@ import ExportAnalyticsButton from '@components/Dashboard/Analytics/AnalyticsExpo
 const EventOverview = dynamic(() => import('@components/Dashboard/Analytics/EventOverview'))
 const CoreWidgetsRow = dynamic(() => import('@components/Dashboard/Analytics/CoreWidgetsRow'))
 const PostgresOverview = dynamic(() => import('@components/Dashboard/Analytics/PostgresOverview'))
+const LearnerProgressTable = dynamic(() => import('@components/Dashboard/Analytics/LearnerProgressTable'))
 
 // Advanced widgets — only loaded when user clicks the Advanced tab
 const AdvancedGate = dynamic(() => import('@components/Dashboard/Analytics/AdvancedGate').then(m => ({ default: m.AdvancedGate })))
@@ -152,6 +153,7 @@ export default function AnalyticsDashboard() {
           <PostgresOverview />
         ) : tab === 'overview' ? (
           <div className="space-y-6 max-w-[1600px] mx-auto w-full">
+            <LearnerProgressTable />
             <EventOverview days={days} />
             <CoreWidgetsRow days={days} />
           </div>
