@@ -231,7 +231,7 @@ export default function GoogleCallbackPage() {
           const mfaParams = new URLSearchParams({ mfa_token: data.mfa_token })
           const next = new URLSearchParams(window.location.search).get('next')
           if (next && /^\/(?!\/)/.test(next)) mfaParams.set('redirect_to', next)
-          router.push(`/auth/login?${mfaParams.toString()}`)
+          router.push(`/login?${mfaParams.toString()}`)
           return
         }
 

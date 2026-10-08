@@ -18,6 +18,14 @@ from src.db.users import AnonymousUser, User
 from src.routers.auth import third_party_login
 
 
+@pytest.fixture(autouse=True)
+def _oauth_dependencies():
+    with patch("src.routers.auth.get_google_user_info", AsyncMock(return_value={"email": "invitee@example.com", "email_verified": True})), patch(
+        "redis.Redis.from_url", return_value=Mock(get=Mock(return_value=None), close=Mock())
+    ):
+        yield
+
+
 async def _set_signup_mode(db, org_id: int, signup_mode: str):
     db.add(
         OrganizationConfig(

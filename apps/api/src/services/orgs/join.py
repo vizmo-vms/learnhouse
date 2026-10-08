@@ -11,7 +11,7 @@ from src.security.features_utils.usage import (
     check_limits_with_usage,
     increase_feature_usage,
 )
-from src.services.orgs.invites import get_invite_code
+from src.services.orgs.invites import resolve_org_invitation, mark_org_invitation_accepted
 from src.services.orgs.join_notifications import notify_user_joined_org
 from src.services.orgs.orgs import get_org_join_mechanism
 from src.services.users.usergroups import add_users_to_usergroup
@@ -42,8 +42,6 @@ async def join_org(
             status_code=404,
             detail="Organization not found",
         )
-
-    await check_limits_with_usage("members", org.id, db_session)
 
     join_method = await get_org_join_mechanism(
         request, args.org_id, current_user, db_session
@@ -82,99 +80,38 @@ async def join_org(
             detail="Please verify your email address before joining an organization.",
         )
 
-    # Check if User isn't already part of the org
-    statement = select(UserOrganization).where(
-        UserOrganization.user_id == user.id, UserOrganization.org_id == args.org_id
+    from src.services.security.email_domains import enforce_allowed_email_domain, enforce_google_org_join
+    enforce_allowed_email_domain(user.email)
+    enforce_google_org_join()
+
+    membership = (await db_session.execute(select(UserOrganization).where(
+        UserOrganization.user_id == user.id, UserOrganization.org_id == org.id
+    ))).scalars().first()
+    code_data, pending_key = await resolve_org_invitation(
+        request, org, user.email.strip().lower(), args.invite_code, current_user, db_session,
+        existing_member=bool(membership),
     )
-    userorg = (await db_session.execute(statement)).scalars().first()
+    if membership and not code_data:
+        raise HTTPException(status_code=400, detail="User is already part of that organization")
+    if not membership and join_method != "open" and not code_data and not pending_key:
+        raise HTTPException(status_code=403, detail="You need an invite to join this organization")
 
-    if userorg:
-        raise HTTPException(
-            status_code=400, detail="User is already part of that organization"
+    if not membership:
+        await check_limits_with_usage("members", org.id, db_session)
+        db_session.add(UserOrganization(
+            user_id=user.id, org_id=org.id, role_id=4,
+            creation_date=str(datetime.now()), update_date=str(datetime.now()),
+        ))
+        await db_session.commit()
+        await increase_feature_usage("members", org.id, db_session)
+        from src.routers.users import _invalidate_session_cache
+        _invalidate_session_cache(user.id)
+        await notify_user_joined_org(request, db_session, user, org.id, org=org)
+
+    if code_data and code_data.get("usergroup_id"):
+        await add_users_to_usergroup(
+            request, db_session, InternalUser(id=0), int(code_data["usergroup_id"]), str(user.id)
         )
-
-    if join_method == "inviteOnly" and user and org and args.invite_code:
-        if user.id is not None and org.id is not None:
-
-            # Check if invite code exists
-            inviteCode = await get_invite_code(
-                request, org.id, args.invite_code, current_user, db_session
-            )
-
-            if not inviteCode:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Invite code is incorrect",
-                )
-
-            # Link user and organization
-            user_organization = UserOrganization(
-                user_id=user.id,
-                org_id=org.id,
-                role_id=4,
-                creation_date=str(datetime.now()),
-                update_date=str(datetime.now()),
-            )
-
-            db_session.add(user_organization)
-            await db_session.commit()
-
-            await increase_feature_usage("members", org.id, db_session)
-
-            from src.routers.users import _invalidate_session_cache
-            _invalidate_session_cache(user.id)
-
-            await notify_user_joined_org(request, db_session, user, org.id, org=org)
-
-            # Add user to UserGroup if invite code is linked to one
-            if inviteCode.get("usergroup_id"):
-                await add_users_to_usergroup(
-                    request,
-                    db_session,
-                    InternalUser(id=0),
-                    int(inviteCode.get("usergroup_id")),
-                    str(user.id),
-                )
-
-            return "Great, You're part of the Organization"
-
-        else:
-            raise HTTPException(
-                status_code=403,
-                detail="Something wrong, try later.",
-            )
-
-    if join_method == "open" and user and org:
-        if user.id is not None and org.id is not None:
-            # Link user and organization
-            user_organization = UserOrganization(
-                user_id=user.id,
-                org_id=org.id,
-                role_id=4,
-                creation_date=str(datetime.now()),
-                update_date=str(datetime.now()),
-            )
-
-            db_session.add(user_organization)
-            await db_session.commit()
-
-            from src.routers.users import _invalidate_session_cache
-            _invalidate_session_cache(user.id)
-
-            await increase_feature_usage("members", org.id, db_session)
-
-            await notify_user_joined_org(request, db_session, user, org.id, org=org)
-
-            return "Great, You're part of the Organization"
-
-        else:
-            raise HTTPException(
-                status_code=403,
-                detail="Something wrong, try later.",
-            )
-
-    else:
-        raise HTTPException(
-            status_code=403,
-            detail="Something wrong, try later.",
-        )
+    if pending_key:
+        mark_org_invitation_accepted(pending_key)
+    return "Great, You're part of the Organization"

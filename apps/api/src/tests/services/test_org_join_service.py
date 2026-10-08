@@ -75,6 +75,12 @@ async def _make_usergroup(db, org, **overrides):
     return usergroup
 
 
+@pytest.fixture(autouse=True)
+def _no_pending_invitation():
+    with patch("redis.Redis.from_url", return_value=Mock(get=Mock(return_value=None), close=Mock())):
+        yield
+
+
 class TestOrgJoinService:
     def test_join_org_model_coerces_user_id_to_string(self):
         args = JoinOrg(org_id=1, user_id=42)
@@ -191,7 +197,7 @@ class TestOrgJoinService:
             "src.services.orgs.join.get_org_join_mechanism",
             new=AsyncMock(return_value="inviteOnly"),
         ), patch(
-            "src.services.orgs.join.get_invite_code",
+            "src.services.orgs.invites.get_invite_code",
             new=AsyncMock(return_value={"usergroup_id": usergroup.id}),
         ), patch(
             "src.services.orgs.join.add_users_to_usergroup",
@@ -224,7 +230,7 @@ class TestOrgJoinService:
             "src.services.orgs.join.get_org_join_mechanism",
             new=AsyncMock(return_value="inviteOnly"),
         ), patch(
-            "src.services.orgs.join.get_invite_code",
+            "src.services.orgs.invites.get_invite_code",
             new=AsyncMock(return_value=None),
         ):
             with pytest.raises(HTTPException) as missing_invite_exc:

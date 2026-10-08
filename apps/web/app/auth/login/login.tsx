@@ -7,7 +7,7 @@ import { useFormik } from 'formik'
 import React, { useState, useEffect } from 'react'
 import { AlertTriangle, Info, Lock, Mail, Shield, X, Clock, Send, CheckCircle2 } from 'lucide-react'
 import { checkSSOEnabled, redirectToSSOLogin } from '@services/auth/sso'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@components/Contexts/AuthContext'
 import { getLEARNHOUSE_TOP_DOMAIN_VAL, getDeploymentMode, isOnCustomDomain } from '@services/config/config'
@@ -36,6 +36,9 @@ const LoginClient = (props: LoginClientProps) => {
   const router = useRouter();
   const session = useLHSession() as any;
   const isAuthenticated = session?.status === 'authenticated'
+  const searchParams = useSearchParams()
+  const inviteCode = searchParams.get('inviteCode') || ''
+  const hasMfaChallenge = !!searchParams.get('mfa_token')
 
   // The org's allowed sign-in methods. Offering a method the org has turned off
   // only leads to a 403 from the backend, so it isn't offered at all.
@@ -55,8 +58,8 @@ const LoginClient = (props: LoginClientProps) => {
   // Guarded by !isSubmitting so a FRESH login (which flips the session to
   // authenticated) doesn't race the onSubmit's own post-login navigation.
   useEffect(() => {
-    if (isAuthenticated && !isSubmitting) router.replace('/home')
-  }, [isAuthenticated, isSubmitting, router])
+    if (isAuthenticated && !isSubmitting && !inviteCode && !hasMfaChallenge) router.replace('/home')
+  }, [isAuthenticated, isSubmitting, inviteCode, hasMfaChallenge, router])
 
   // Error state with type information
   const [error, setError] = useState('')
@@ -216,6 +219,11 @@ const LoginClient = (props: LoginClientProps) => {
       const domainAttr = (topDomain === 'localhost' || isOnCustomDomain()) ? '' : `; domain=.${topDomain}`;
       document.cookie = `LH_oauth_orgslug=${props.org.slug}${baseAttributes}${domainAttr}`;
       document.cookie = `LH_oauth_org_id=${props.org.id}${baseAttributes}${domainAttr}`;
+      // Preserve the shared invite through Google's redirect; clear any stale
+      // code when this is an ordinary login.
+      document.cookie = inviteCode
+        ? `LH_oauth_invite_code=${encodeURIComponent(inviteCode)}${baseAttributes}${domainAttr}; Max-Age=600`
+        : `LH_oauth_invite_code=${baseAttributes}${domainAttr}; Max-Age=0`;
     }
     // Use absolute URL with current origin for custom domain support
     signIn('google', { callbackUrl: buildCallbackUrl() });
@@ -818,6 +826,11 @@ const LoginClient = (props: LoginClientProps) => {
                 </div>
               )}
 
+              {inviteCode && (
+                <p className="mb-3 text-sm text-teal-800" role="status">
+                  {t('auth.google_invite_hint', { defaultValue: 'Use your work Google account to accept this invitation.' })}
+                </p>
+              )}
               {/* Social & SSO Buttons */}
               <div className="space-y-2.5">
                 {googleAllowed && (
