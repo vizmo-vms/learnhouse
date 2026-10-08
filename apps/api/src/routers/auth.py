@@ -653,7 +653,6 @@ async def third_party_login(
     db_session: AsyncSession = Depends(get_db_session),
 ):
     import logging
-    import redis as _redis
     _logger = logging.getLogger(__name__)
 
     # Usergroup to attach the user to after sign-in, when they joined through an
