@@ -132,34 +132,9 @@ async def signWithGoogle(
     # Google
     google_user = await get_google_user_info(access_token)
 
-    # SECURITY: trust only the email Google returns *and* explicitly marks as
-    # verified. Previously this fell back to the body-supplied ``email`` when
-    # Google omitted it (which happens whenever the access token was minted
-    # without the ``email`` scope), letting an attacker with any valid Google
-    # token impersonate any LearnHouse user whose address they knew. The body
-    # ``email`` field is kept in the request schema for backward compatibility
-    # but is no longer used for identity resolution.
-    google_email = google_user.get("email")
-    google_email_verified = google_user.get("email_verified")
-    # SECURITY: Google's userinfo/tokeninfo endpoints sometimes serialise
-    # ``email_verified`` as the JSON *string* ``"true"``/``"false"`` (notably
-    # the v1/v2 userinfo and some Workspace federated accounts) rather than a
-    # native boolean. A plain truthiness test (``not google_email_verified``)
-    # treats the string ``"false"`` as verified, which would let an attacker
-    # who controls an *unverified* Google account matching a victim's address
-    # take over the LearnHouse account. Accept only an explicit boolean ``True``
-    # or the string ``"true"`` (case-insensitive).
-    if isinstance(google_email_verified, str):
-        email_is_verified = google_email_verified.strip().lower() == "true"
-    else:
-        email_is_verified = google_email_verified is True
-    if not google_email or not email_is_verified:
-        raise HTTPException(
-            status_code=401,
-            detail="Google did not return a verified email for this account",
-        )
-    # Normalise to lower-case to match the DB unique-ish invariant on email.
-    user_email = google_email.strip().lower()
+    # Identity and the domain boundary come only from Google's verified claims.
+    from src.services.security.email_domains import verified_google_email
+    user_email = verified_google_email(google_user)
 
     # Match existing accounts case-insensitively. Local email/password signups
     # store the email exactly as submitted (no lower-casing), so an account

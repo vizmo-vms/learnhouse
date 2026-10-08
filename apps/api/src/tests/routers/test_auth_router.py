@@ -576,7 +576,7 @@ class TestAuthRouter:
         contract here."""
         await _set_org_signup_mode(db, org.id, "open")
         sign_with_google = AsyncMock(return_value=None)
-        with patch("src.routers.auth.signWithGoogle", sign_with_google):
+        with patch("src.routers.auth.get_google_user_info", AsyncMock(return_value={"email": "user@test.com", "email_verified": True})), patch("redis.Redis.from_url", return_value=Mock(get=Mock(return_value=None))), patch("src.routers.auth.signWithGoogle", sign_with_google):
             response = await client.post(
                 "/api/v1/auth/oauth",
                 params={"org_id": 1},

@@ -176,6 +176,10 @@ async def create_user(
     is_oauth: bool = False,
     signup_provider: str = "email",
 ):
+    from src.services.security.email_domains import enforce_allowed_email_domain, enforce_google_signup
+    enforce_allowed_email_domain(user_object.email)
+    enforce_google_signup(is_oauth)
+
     # Validate password complexity (skip for OAuth users who have empty passwords)
     if user_object.password and not is_oauth:
         validation_result = validate_password_complexity(user_object.password)
@@ -426,6 +430,10 @@ async def create_user_without_org(
     is_oauth: bool = False,
     signup_provider: str = "email",
 ):
+    from src.services.security.email_domains import enforce_allowed_email_domain, enforce_google_signup
+    enforce_allowed_email_domain(user_object.email)
+    enforce_google_signup(is_oauth)
+
     # Validate password complexity (skip for OAuth users who have empty passwords)
     if user_object.password and not is_oauth:
         validation_result = validate_password_complexity(user_object.password)

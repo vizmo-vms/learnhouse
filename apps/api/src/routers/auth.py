@@ -662,137 +662,38 @@ async def third_party_login(
     # Pending email invite to mark as consumed once the user actually joins.
     _consume_invite_key = None
 
-    # Validate org_id before passing it downstream. The rule must mirror the
-    # email/password signup endpoints, otherwise the same person gets a
-    # different outcome depending on which button they pressed:
-    #
-    #   open org       -> POST /users/{org_id}                (no invite needed)
-    #   inviteOnly org -> POST /users/{org_id}/invite/{code}  (invite required)
-    #
-    # Previously this endpoint required a pending *email* invite in Redis for
-    # every org regardless of its join mechanism, and silently dropped org_id
-    # when none was found. Signing up with Google into an open org — or through
-    # an invite *code* link — therefore created an account with no organization
-    # at all, while the equivalent form signup joined the org normally.
     if org_id is not None:
         from src.db.organizations import Organization
+        from src.db.user_organizations import UserOrganization
         from src.services.orgs.orgs import get_org_join_mechanism
-        from src.services.orgs.invites import get_invite_code
+        from src.services.orgs.invites import resolve_org_invitation
+        from src.services.orgs.auth_policy import enforce_login_auth_method
+        from src.services.security.email_domains import verified_google_email
 
         org_record = (await db_session.execute(
             select(Organization).where(Organization.id == org_id)
         )).scalars().first()
-
         if not org_record:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid org_id",
-            )
-
-        # An org that has turned Google off must not be joinable — or reachable —
-        # through the Google button. Same door-level refusal as password login.
-        from src.services.orgs.auth_policy import enforce_login_auth_method
-
+            raise HTTPException(status_code=400, detail="Invalid org_id")
+        if body.provider != "google":
+            raise HTTPException(status_code=400, detail="Unsupported provider")
         await enforce_login_auth_method(db_session, org_id, AUTH_METHOD_GOOGLE)
-
-        join_mechanism = await get_org_join_mechanism(
-            request, org_id, current_user, db_session
+        # Never use body.email to authorize an invitation or a domain.
+        invite_email = verified_google_email(await get_google_user_info(body.access_token))
+        existing_member = (await db_session.execute(
+            select(UserOrganization).join(User, User.id == UserOrganization.user_id)
+            .where(func.lower(User.email) == invite_email, UserOrganization.org_id == org_id)
+        )).scalars().first()
+        code_data, _consume_invite_key = await resolve_org_invitation(
+            request, org_record, invite_email, invite_code, current_user, db_session,
+            existing_member=bool(existing_member),
         )
+        if code_data:
+            _invite_usergroup_id = code_data.get("usergroup_id")
 
-        # Open orgs: anyone may join, exactly as POST /users/{org_id} allows.
-        # inviteOnly orgs: the caller must prove an invite.
-        if join_mechanism == "inviteOnly":
-            # SECURITY: resolve the identity from the Google-verified email, NOT
-            # from the attacker-controlled body.email. signWithGoogle keys the
-            # account on the Google-returned email but honors org_id to grant
-            # membership. If the invite gate trusted body.email, an attacker could
-            # supply a victim's invited address (passing the gate) while
-            # authenticating with their own Google token, and get their own account
-            # joined to an org they were never invited to. The invite must be
-            # checked against the same email that will own the account.
-            if body.provider == "google":
-                _google_user = await get_google_user_info(body.access_token)
-                _verified_email = _google_user.get("email")
-                if not _verified_email or not _google_user.get("email_verified"):
-                    raise HTTPException(
-                        status_code=status.HTTP_401_UNAUTHORIZED,
-                        detail="Google did not return a verified email for this account",
-                    )
-                _invite_email = _verified_email.strip().lower()
-            else:
-                _invite_email = body.email.strip().lower()
-
-            _authorized = False
-
-            # 0. Already a member: this is a plain sign-in, not a join. The org
-            #    context cookie is set on the login page too, so requiring an
-            #    invite here would lock existing members out of their own org.
-            from src.db.user_organizations import UserOrganization
-
-            _existing_member = (await db_session.execute(
-                select(UserOrganization)
-                .join(User, User.id == UserOrganization.user_id)  # type: ignore[arg-type]
-                .where(
-                    (func.lower(User.email) == _invite_email)
-                    & (UserOrganization.org_id == org_id)
-                )
-            )).scalars().first()
-            if _existing_member:
-                _authorized = True
-
-            # 1. An invite code carried through the OAuth redirect, same code the
-            #    form signup would have posted to /users/{org_id}/invite/{code}.
-            if invite_code:
-                try:
-                    _code_data = await get_invite_code(
-                        request, org_id, invite_code, current_user, db_session
-                    )
-                except HTTPException:
-                    _code_data = None
-                if _code_data:
-                    _authorized = True
-                    _invite_usergroup_id = _code_data.get("usergroup_id")
-
-            # 2. Or a pending invite sent to this address from the org dashboard.
-            if not _authorized:
-                _r = None
-                try:
-                    _lh_config = get_learnhouse_config()
-                    _redis_url = _lh_config.redis_config.redis_connection_string
-                    if _redis_url:
-                        _r = _redis.Redis.from_url(_redis_url)
-                        _invite_key = f"invited_user:{_invite_email}:org:{org_record.org_uuid}"
-                        if _r.get(_invite_key):
-                            _authorized = True
-                            _consume_invite_key = _invite_key
-                except Exception as e:
-                    # Fail loudly. Continuing here used to create the account with
-                    # no org, which looks like a successful signup to the user but
-                    # leaves them outside the organization with nothing to retry.
-                    _logger.error("Redis unavailable for invite validation: %s", e)
-                    raise HTTPException(
-                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                        detail="Could not verify your invitation right now, please try again.",
-                    )
-                finally:
-                    # Always release the Redis connection pool created by from_url;
-                    # otherwise every OAuth login leaks a connection pool/socket and
-                    # the API eventually exhausts file descriptors / Redis connections.
-                    if _r is not None:
-                        try:
-                            _r.close()
-                        except Exception:
-                            pass
-
-            if not _authorized:
-                _logger.warning(
-                    "OAuth org_id=%s supplied but no valid invite was found for the account",
-                    org_id,
-                )
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="You need an invite to join this organization",
-                )
+        join_mechanism = await get_org_join_mechanism(request, org_id, current_user, db_session)
+        if join_mechanism == "inviteOnly" and not existing_member and not code_data and not _consume_invite_key:
+            raise HTTPException(status_code=403, detail="You need an invite to join this organization")
 
     user = None
 
@@ -833,36 +734,13 @@ async def third_party_login(
                 str(user.id),
             )
         except Exception:
-            # The account exists and is in the org; a usergroup failure must not
-            # turn a completed sign-in into an error.
-            _logger.warning("Could not attach OAuth user to invite usergroup")
+            await db_session.rollback()
+            _logger.exception("Could not attach OAuth user to invite usergroup")
+            raise HTTPException(status_code=503, detail="Could not finish adding you to your invited group. Please try signing in again.")
 
     if _consume_invite_key:
-        _r = None
-        try:
-            _redis_url = get_learnhouse_config().redis_config.redis_connection_string
-            if _redis_url:
-                _r = _redis.Redis.from_url(_redis_url)
-                _invited_data = _r.get(_consume_invite_key)
-                if _invited_data:
-                    import json as _json
-
-                    _invited_record = _json.loads(_invited_data)
-                    _invited_record["pending"] = False
-                    _remaining_ttl = _r.ttl(_consume_invite_key)
-                    _r.set(
-                        _consume_invite_key,
-                        _json.dumps(_invited_record),
-                        ex=_remaining_ttl if _remaining_ttl > 0 else None,
-                    )
-        except Exception:
-            _logger.warning("Could not mark invitation as accepted")
-        finally:
-            if _r is not None:
-                try:
-                    _r.close()
-                except Exception:
-                    pass
+        from src.services.orgs.invites import mark_org_invitation_accepted
+        mark_org_invitation_accepted(_consume_invite_key)
 
     # Issue the session through the same chokepoint as password and magic-link
     # login, so an account with a confirmed second factor is challenged here too.

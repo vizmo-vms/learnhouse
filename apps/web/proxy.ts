@@ -338,7 +338,7 @@ export default async function proxy(req: NextRequest) {
 
     // A logged-in user has no business on /login — bounce them to the hub (the
     // page itself re-verifies, so this is a best-effort UX shortcut).
-    if (pathname === '/login' && hasSession) {
+    if (pathname === '/login' && hasSession && !req.nextUrl.searchParams.get('inviteCode') && !req.nextUrl.searchParams.get('mfa_token')) {
       return NextResponse.redirect(new URL('/home', req.url))
     }
 

@@ -302,9 +302,99 @@ async def get_invite_code(
         )
 
     invite_code_value = r.get(matched_key)
+    if not invite_code_value:
+        raise HTTPException(status_code=404, detail="Invite code not found")
     invite_code_data = json.loads(invite_code_value)
 
     return invite_code_data
+
+
+async def resolve_org_invitation(request, org, email, invite_code, current_user, db_session, *, existing_member=False):
+    """Resolve a shared code or the code attached to an email invitation.
+
+    Email invitations store a code UUID, not a group ID. Resolve that UUID in
+    this organization only, even on subsequent logins, so retries can finish
+    group assignment after a partial onboarding failure.
+    """
+    optional_pending = existing_member and not invite_code
+    code_data = None
+    if invite_code:
+        code_data = await get_invite_code(request, org.id, invite_code, current_user, db_session)
+        if not code_data:
+            raise HTTPException(status_code=400, detail="Invite code is incorrect")
+
+    pending_key = None
+    redis_url = get_learnhouse_config().redis_config.redis_connection_string
+    if redis_url:
+        r = None
+        try:
+            r = redis.Redis.from_url(redis_url)
+            key = f"invited_user:{email}:org:{org.org_uuid}"
+            raw = r.get(key)
+            invitation = json.loads(raw) if raw else None
+            if invitation and invitation.get("pending") is True:
+                code_uuid = invitation.get("invite_code_uuid")
+                # A shared link for a different group must not consume an
+                # unrelated email invitation whose mapping was not applied.
+                applies_email_code = not code_data or not code_uuid or code_data.get("invite_code_uuid") == code_uuid
+                if invitation.get("pending") is True and applies_email_code:
+                    pending_key = key
+                if code_uuid and not code_data:
+                    if not re.fullmatch(r"org_invite_code_[0-9a-fA-F-]{36}", code_uuid):
+                        raise HTTPException(status_code=403, detail="Your invitation is no longer valid. Please request a new invite.")
+                    for code_key in r.scan_iter(match=f"{code_uuid}:org:{org.org_uuid}:code:*", count=10):
+                        value = r.get(code_key)
+                        if value:
+                            code_data = json.loads(value)
+                            break
+                    if not code_data:
+                        raise HTTPException(status_code=403, detail="Your invite code has expired or been removed. Please request a new invite.")
+        except HTTPException:
+            if optional_pending:
+                return None, None
+            raise
+        except Exception:
+            if optional_pending:
+                logger.warning("Could not inspect optional invitation for an existing member")
+                return None, None
+            logger.exception("Could not resolve organization invitation")
+            raise HTTPException(status_code=503, detail="Could not verify your invitation right now, please try again.")
+
+        finally:
+            if r is not None:
+                try:
+                    r.close()
+                except Exception:
+                    logger.warning("Could not close invitation Redis connection")
+
+    if code_data and code_data.get("usergroup_id"):
+        group = (await db_session.execute(select(UserGroup).where(
+            UserGroup.id == int(code_data["usergroup_id"]), UserGroup.org_id == org.id,
+        ))).scalars().first()
+        if not group:
+            if optional_pending:
+                return None, None
+            raise HTTPException(status_code=403, detail="The group attached to your invitation is no longer available. Please request a new invite.")
+    return code_data, pending_key
+
+
+def mark_org_invitation_accepted(key: str) -> None:
+    r = None
+    try:
+        redis_url = get_learnhouse_config().redis_config.redis_connection_string
+        if redis_url:
+            r = redis.Redis.from_url(redis_url)
+            raw = r.get(key)
+            if raw:
+                invitation = json.loads(raw)
+                invitation["pending"] = False
+                # Never extend or remove an invitation's expiry.
+                r.set(key, json.dumps(invitation), xx=True, keepttl=True)
+    except Exception:
+        logger.exception("Could not mark invitation as accepted")
+    finally:
+        if r is not None:
+            r.close()
 
 
 async def delete_invite_code(
