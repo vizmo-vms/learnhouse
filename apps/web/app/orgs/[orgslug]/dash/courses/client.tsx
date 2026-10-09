@@ -62,7 +62,7 @@ function CoursesHome(params: CourseProps) {
 
   // TanStack Query for courses — cached on the client, instant on return visits
   const { data: coursesData, isLoading: isCoursesLoading } = useQuery({
-    queryKey: queryKeys.courses.list(orgslug),
+    queryKey: queryKeys.courses.managementList(orgslug),
     queryFn: async () => {
       const url = `${getAPIUrl()}courses/org_slug/${orgslug}/page/1/limit/500?include_unpublished=true`
       const res = await fetch(url, RequestBodyWithAuthHeader('GET', null, null, access_token))

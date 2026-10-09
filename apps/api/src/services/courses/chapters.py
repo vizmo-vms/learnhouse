@@ -22,8 +22,8 @@ from src.security.rbac import check_resource_access, AccessAction
 from src.services.courses.locks import (
     batch_accessible_restricted_uuids,
     is_locked_for_user,
-    is_org_admin,
 )
+from src.security.rbac.course_permissions import can_manage_courses
 
 
 ####################################################
@@ -395,7 +395,7 @@ async def _apply_locks_to_chapters(
 
     is_anon = isinstance(current_user, AnonymousUser)
     acting_user_id = resolve_acting_user_id(current_user)
-    admin = False if is_anon else await is_org_admin(acting_user_id, course.org_id, db_session)
+    admin = False if is_anon else await can_manage_courses(current_user, course.org_id, db_session)
 
     # Admins see everything — no stripping.
     if admin:

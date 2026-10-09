@@ -6,8 +6,6 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from src.db.usergroup_resources import UserGroupResource
 from src.db.usergroup_user import UserGroupUser
 from src.db.organizations import Organization
-from src.db.roles import Role
-from src.db.user_organizations import UserOrganization
 from src.security.features_utils.usage import (
     check_limits_with_usage,
     decrease_feature_usage,
@@ -35,7 +33,11 @@ from src.security.rbac import (
     AccessContext,
     check_resource_access,
 )
-from src.security.rbac.constants import ADMIN_OR_MAINTAINER_ROLE_IDS
+from src.security.rbac.course_permissions import (
+    can_manage_org_courses,
+    check_course_collection_access,
+    has_org_course_permission,
+)
 from src.security.superadmin import is_user_superadmin
 from src.services.courses.thumbnails import upload_thumbnail
 from src.services.search.normalization import LIKE_ESCAPE_CHAR, build_like_pattern
@@ -281,25 +283,9 @@ async def get_courses_orgslug(
     if not org:
         return []
 
-    # Check if user can view unpublished courses (must be admin/editor in org)
-    can_view_unpublished = False
-    if include_unpublished and not isinstance(current_user, AnonymousUser):
-        # Superadmins can always view unpublished courses
-        if await is_user_superadmin(acting_user_id, db_session):
-            can_view_unpublished = True
-        else:
-            # Check if user has admin/editor role in this organization
-            role_statement = (
-                select(Role)
-                .join(UserOrganization)
-                .where(UserOrganization.org_id == org.id)
-                .where(UserOrganization.user_id == acting_user_id)
-            )
-            user_roles = (await db_session.execute(role_statement)).scalars().all()
-            for role in user_roles:
-                if role.id in ADMIN_OR_MAINTAINER_ROLE_IDS:  # Admin role IDs
-                    can_view_unpublished = True
-                    break
+    can_manage_courses = not is_anon and await check_course_collection_access(
+        current_user, org.id, db_session
+    )
 
     # Base query
     needs_distinct = False
@@ -314,9 +300,11 @@ async def get_courses_orgslug(
         query = query.where(Course.public == True, Course.published == True)
     else:
         # For authenticated users with admin access viewing dashboard, show all courses
-        if can_view_unpublished:
-            # Admins see all courses in the organization (no additional filter)
-            pass
+        if can_manage_courses:
+            # Managers bypass learner group restrictions. Drafts are included
+            # only when requested by the management view.
+            if not include_unpublished:
+                query = query.where(Course.published == True)
         else:
             # For regular users, show:
             # 1. Published AND public courses
@@ -419,6 +407,10 @@ async def get_courses_count_orgslug(
     """
     acting_user_id = resolve_acting_user_id(current_user)
 
+    org_id = (await db_session.execute(
+        select(Organization.id).where(Organization.slug == org_slug)
+    )).scalars().first()
+
     # Base query
     query = (
         select(func.count(Course.id.distinct()))
@@ -429,8 +421,8 @@ async def get_courses_count_orgslug(
     if isinstance(current_user, AnonymousUser):
         # For anonymous users, only count public AND published courses
         query = query.where(Course.public == True, Course.published == True)
-    elif not isinstance(current_user, AnonymousUser) and await is_user_superadmin(acting_user_id, db_session):
-        # Superadmins see all courses (no additional filter)
+    elif org_id is not None and await check_course_collection_access(current_user, org_id, db_session):
+        # Management inventory includes courses across all groups.
         pass
     else:
         # For authenticated users, count:
@@ -500,12 +492,15 @@ async def search_courses(
     )
 
     search_acting_user_id = resolve_acting_user_id(current_user)
+    org_id = (await db_session.execute(
+        select(Organization.id).where(Organization.slug == org_slug)
+    )).scalars().first()
 
     if isinstance(current_user, AnonymousUser):
         # For anonymous users, only show public AND published courses
         query = query.where(Course.public == True, Course.published == True)
-    elif await is_user_superadmin(search_acting_user_id, db_session):
-        # Superadmins see all courses (no additional filter)
+    elif org_id is not None and await check_course_collection_access(current_user, org_id, db_session):
+        # Managers can find every course they are permitted to manage.
         pass
     else:
         # For authenticated users, show:
@@ -603,6 +598,9 @@ async def create_course(
     # Since this is a new course, we need to check organization-level permissions
     # For now, we'll use the existing RBAC check but with proper organization context
     await check_resource_access(request, db_session, current_user, "course_x", AccessAction.CREATE)
+
+    if not await has_org_course_permission(current_user, org_id, "create", db_session):
+        raise HTTPException(403, "You do not have permission to create courses in this organization")
 
     await require_org_membership(
         resolve_acting_user_id(current_user), org_id, db_session
@@ -1164,6 +1162,9 @@ async def clone_course(
     # Also check if user can create courses
     await check_resource_access(request, db_session, current_user, "course_x", AccessAction.CREATE)
 
+    if not await has_org_course_permission(current_user, original_course.org_id, "create", db_session):
+        raise HTTPException(403, "You do not have permission to create courses in this organization")
+
     # SECURITY: The clone is written into the ORIGINAL course's org. READ access
     # to that course can come from it simply being public, and the "course_x"
     # create check is not bound to a concrete org. Without an explicit membership
@@ -1552,6 +1553,18 @@ async def get_course_user_rights(
             rights["permissions"]["read"] = True
         return rights
 
+    # An API token reports its own grants, not the creator's human role.
+    if isinstance(current_user, APITokenUser):
+        from src.security.rbac.resource_access import ResourceAccessChecker
+        checker = ResourceAccessChecker(request, db_session, current_user)
+        for action in AccessAction:
+            decision = await checker.check_access(course_uuid, action)
+            rights["permissions"][action.value] = decision.allowed
+        for action in ("create", "update", "delete"):
+            rights["permissions"][f"{action}_content"] = rights["permissions"][action]
+        rights["permissions"]["manage_access"] = rights["permissions"]["update"]
+        return rights
+
     # Check course ownership
     statement = select(ResourceAuthor).where(
         ResourceAuthor.resource_uuid == course_uuid,
@@ -1587,8 +1600,8 @@ async def get_course_user_rights(
         rights["roles"]["is_maintainer_role"] = True
 
     # Check instructor role
-    has_instructor_permissions = await authorization_verify_based_on_roles(
-        request, rights_acting_user_id, "create", "course_x", db_session
+    has_instructor_permissions = await has_org_course_permission(
+        current_user, course.org_id, "create", db_session
     )
 
     if has_instructor_permissions:
@@ -1656,5 +1669,24 @@ async def get_course_user_rights(
     # CERTIFICATION permissions
     if is_course_owner or is_admin or is_maintainer_role:
         rights["permissions"]["create_certifications"] = True
+
+    # Custom management roles do not have the reserved admin role IDs. Report
+    # their actual course rights to the editor without granting deletion or
+    # unrelated administrative capabilities.
+    if not is_admin_or_maintainer and await can_manage_org_courses(rights_acting_user_id, course.org_id, db_session):
+        for action in ("update", "create", "delete"):
+            permitted = await authorization_verify_based_on_roles(
+                request, rights_acting_user_id, action, course_uuid, db_session
+            )
+            if permitted:
+                if action == "update":
+                    rights["permissions"]["update"] = True
+                    rights["permissions"]["update_content"] = True
+                    rights["permissions"]["manage_access"] = True
+                elif action == "create":
+                    rights["permissions"]["create_content"] = True
+                else:
+                    rights["permissions"]["delete"] = True
+                    rights["permissions"]["delete_content"] = True
 
     return rights

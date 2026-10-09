@@ -12,6 +12,7 @@ export const queryKeys = {
   },
   courses: {
     list: (orgSlug: string) => ['courses', orgSlug] as const,
+    managementList: (orgSlug: string) => ['courses', orgSlug, 'management'] as const,
     detail: (uuid: string) => ['course', uuid] as const,
     meta: (uuid: string) => ['course', uuid, 'meta'] as const,
     contributors: (uuid: string) => ['course', uuid, 'contributors'] as const,

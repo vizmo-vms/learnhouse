@@ -28,6 +28,7 @@ from src.db.usergroup_resources import UserGroupResource
 from src.db.usergroup_user import UserGroupUser
 from src.security.rbac.types import AccessAction, AccessContext, AccessDecision, ResourceConfig
 from src.security.rbac.config import get_resource_config, RESOURCE_CONFIGS
+from src.security.rbac.course_permissions import can_manage_org_courses
 from src.security.rbac.rbac import (
     authorization_verify_based_on_roles,
     authorization_verify_based_on_org_admin_status,
@@ -174,6 +175,21 @@ class ResourceAccessChecker:
         # Anonymous user
         if user_id == 0:
             return await self._check_anonymous_read_access(resource_uuid, config)
+
+        # Course managers need the full course for editing and previewing,
+        # including group-restricted content. Never apply this to other types.
+        if config.resource_type == "courses":
+            course = await self._get_resource(resource_uuid, config)
+            if course is not None and await can_manage_org_courses(user_id, course.org_id, self.db_session):
+                return AccessDecision(
+                    allowed=True,
+                    reason="User can manage courses in this organization",
+                    via_role=True,
+                    resource_uuid=resource_uuid,
+                    user_id=user_id,
+                    action="read",
+                    context=context.value,
+                )
 
         # Dashboard context: admins/authors see everything
         if context == AccessContext.DASHBOARD:

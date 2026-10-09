@@ -81,7 +81,7 @@ function AssignmentsHome() {
   };
 
   const { data: courses } = useQuery({
-    queryKey: queryKeys.courses.list(org?.slug ?? ''),
+    queryKey: queryKeys.courses.managementList(org?.slug ?? ''),
     queryFn: () => getOrgCourses(org.slug, {}, access_token, true),
     enabled: !!(org?.slug && access_token),
     staleTime: 60_000,

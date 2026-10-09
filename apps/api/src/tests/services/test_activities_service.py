@@ -299,7 +299,7 @@ class TestGetActivityById:
 # _apply_activity_lock
 # ---------------------------------------------------------------------------
 
-_PATCH_IS_ORG_ADMIN = "src.services.courses.activities.activities.is_org_admin"
+_PATCH_IS_ORG_ADMIN = "src.services.courses.activities.activities.can_manage_courses"
 _PATCH_BATCH_ACCESSIBLE = "src.services.courses.activities.activities.batch_accessible_restricted_uuids"
 _PATCH_IS_LOCKED = "src.services.courses.activities.activities.is_locked_for_user"
 

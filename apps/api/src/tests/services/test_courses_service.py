@@ -906,6 +906,7 @@ class TestCourseMutationsAndRights:
         token_user = APITokenUser(
             org_id=org.id,
             created_by_user_id=regular_user.id,
+            rights={"courses": {"action_create": True}},
         )
 
         with patch(
@@ -1082,6 +1083,7 @@ class TestCourseMutationsAndRights:
         token_user = APITokenUser(
             org_id=org.id,
             created_by_user_id=regular_user.id,
+            rights={"courses": {"action_create": True}},
         )
 
         with patch(
@@ -1194,8 +1196,14 @@ class TestCourseMutationsAndRights:
 
     @pytest.mark.asyncio
     async def test_clone_course_regular_user_and_storage_helpers(
-        self, db, org, course, regular_user, mock_request
+        self, db, org, course, regular_user, user_role, mock_request
     ):
+        user_role.rights = {
+            **user_role.rights,
+            "courses": {**user_role.rights["courses"], "action_create": True},
+        }
+        db.add(user_role)
+        await db.commit()
         with patch(
             "src.services.courses.courses.check_resource_access",
             new_callable=AsyncMock,
