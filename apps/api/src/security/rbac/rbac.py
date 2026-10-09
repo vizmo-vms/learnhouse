@@ -272,6 +272,7 @@ async def _load_applicable_roles(
         select(Role)
         .join(UserOrganization)
         .where(UserOrganization.user_id == user_id)
+        .where(UserOrganization.org_id == target_org_id)
         .where((Role.org_id == target_org_id) | (Role.org_id == null()))
     )
     return (await db_session.execute(statement)).scalars().all()
@@ -330,6 +331,7 @@ async def _load_roles_for_user_target(
         select(Role)
         .join(UserOrganization)
         .where(UserOrganization.user_id == user_id)
+        .where(UserOrganization.org_id.in_(shared_org_ids))
         .where(Role.org_id.in_(shared_org_ids) | (Role.org_id == null()))  # type: ignore[union-attr]
     )
     return (await db_session.execute(statement)).scalars().all()

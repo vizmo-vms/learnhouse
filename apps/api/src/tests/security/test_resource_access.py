@@ -461,6 +461,10 @@ class TestDashboardContext:
     def _make_checker(self, request, session, user, **overrides):
         """Build a checker with the helper methods pre-mocked to the desired return values."""
         checker = ResourceAccessChecker(request, session, user)
+        # These routing tests simulate the legacy author/admin/group paths.
+        # Manager-role authorization has real DB coverage in
+        # test_course_management_access.py; this fixture has no stored course.
+        checker._get_resource = AsyncMock(return_value=None)
         checker._is_admin_or_maintainer = AsyncMock(
             return_value=overrides.get("is_admin", False)
         )
