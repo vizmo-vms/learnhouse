@@ -176,21 +176,6 @@ class ResourceAccessChecker:
         if user_id == 0:
             return await self._check_anonymous_read_access(resource_uuid, config)
 
-        # Course managers need the full course for editing and previewing,
-        # including group-restricted content. Never apply this to other types.
-        if config.resource_type == "courses":
-            course = await self._get_resource(resource_uuid, config)
-            if course is not None and await can_manage_org_courses(user_id, course.org_id, self.db_session):
-                return AccessDecision(
-                    allowed=True,
-                    reason="User can manage courses in this organization",
-                    via_role=True,
-                    resource_uuid=resource_uuid,
-                    user_id=user_id,
-                    action="read",
-                    context=context.value,
-                )
-
         # Dashboard context: admins/authors see everything
         if context == AccessContext.DASHBOARD:
             return await self._check_dashboard_read_access(resource_uuid, config)
@@ -342,6 +327,21 @@ class ResourceAccessChecker:
                 user_id=user_id,
                 action="read",
             )
+
+        # Course managers need the full course for editing and previewing,
+        # including group-restricted content. Preserve the public, author and
+        # admin paths above, and never apply this to another resource type.
+        if config.resource_type == "courses":
+            course = await self._get_resource(resource_uuid, config)
+            if course is not None and await can_manage_org_courses(user_id, course.org_id, self.db_session):
+                return AccessDecision(
+                    allowed=True,
+                    reason="User can manage courses in this organization",
+                    via_role=True,
+                    resource_uuid=resource_uuid,
+                    user_id=user_id,
+                    action="read",
+                )
 
         # Rule 4: Check role-based permissions (only for public resources)
         # Non-public resources should only be accessible via authorship, admin, or usergroup membership
