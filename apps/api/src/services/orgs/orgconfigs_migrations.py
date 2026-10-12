@@ -22,7 +22,7 @@ from src.security.features_utils.plans import PLAN_FEATURE_CONFIGS  # noqa: E402
 logger = logging.getLogger(__name__)
 
 # Features that have admin toggle entries in v2
-# (storage, usergroups, assignments, courses are always-on — no toggle)
+# (storage, usergroups, assignments, courses are always-on, no toggle)
 ALL_FEATURES = [
     "ai", "analytics", "api", "boards", "collaboration",
     "folders", "communities", "members", "payments", "playgrounds", "podcasts",
@@ -81,6 +81,7 @@ def _v2_migrate_config(config: dict) -> dict:
             "color": v1_general.get("color", "") if v1_general.get("color", "").startswith("#") else "",
             "footer_text": v1_general.get("footer_text", ""),
             "favicon_image": v1_general.get("favicon_image", ""),
+            "square_logo_image": v1_general.get("square_logo_image", ""),
             "watermark": v1_general.get("watermark", True),
         },
         "auth_branding": v1_general.get("auth_branding", {
@@ -191,6 +192,6 @@ if __name__ == "__main__":
     async def _main():
         async with _AsyncSession(_engine) as session:
             count = await _v2_migrate_all_configs(session)
-            logger.info("Done — %s config(s) migrated to v2.", count)
+            logger.info("Done: %s config(s) migrated to v2.", count)
 
     asyncio.run(_main())

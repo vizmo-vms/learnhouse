@@ -39,6 +39,21 @@ export async function uploadOrganizationLogo(
   return res
 }
 
+export async function uploadOrganizationSquareLogo(
+  org_id: string,
+  square_logo_file: any,
+  access_token: string
+) {
+  const formData = new FormData()
+  formData.append('square_logo_file', square_logo_file)
+  const result: any = await fetch(
+    `${getAPIUrl()}orgs/` + org_id + '/square_logo',
+    RequestBodyFormWithAuthHeader('PUT', formData, null, access_token)
+  )
+  const res = await errorHandling(result)
+  return res
+}
+
 export async function uploadOrganizationThumbnail(
   org_id: string,
   thumbnail_file: any,
@@ -109,7 +124,7 @@ export async function updateOrgFooterTextConfig(
 /**
  * Set the display name shown on transactional email for this organization.
  *
- * Only the NAME is configurable — the sending address stays the platform's
+ * Only the NAME is configurable; the sending address stays the platform's
  * verified system address, so SPF/DKIM keep aligning. Pass an empty string to
  * fall back to the platform default.
  */
@@ -197,6 +212,25 @@ export async function updateOrgMenuConfig(
   return res
 }
 
+export interface CourseEndConfigPayload {
+  message: string
+  button_text: string
+  button_link: string
+}
+
+export async function updateOrgCourseEndConfig(
+  org_id: string,
+  course_end_config: CourseEndConfigPayload,
+  access_token: string
+) {
+  const result: any = await fetch(
+    `${getAPIUrl()}orgs/${org_id}/config/course-end`,
+    RequestBodyWithAuthHeader('PUT', course_end_config, null, access_token)
+  )
+  const res = await errorHandling(result)
+  return res
+}
+
 export type SignupFieldType =
   | 'text'
   | 'textarea'
@@ -206,7 +240,7 @@ export type SignupFieldType =
   | 'date'
 
 export interface SignupFieldItem {
-  /** JSON key on the user's extra_metadata. Immutable once created — renaming
+  /** JSON key on the user's extra_metadata. Immutable once created, since renaming
    *  it orphans every answer already collected. */
   key: string
   label: string
@@ -216,7 +250,7 @@ export interface SignupFieldItem {
   order: number
   help_text?: string
   placeholder?: string
-  /** select only — also the server-side allowlist. */
+  /** select only; also the server-side allowlist. */
   options?: string[]
   max_length?: number | null
   min_value?: number | null

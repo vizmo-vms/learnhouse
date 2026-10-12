@@ -71,7 +71,7 @@ def nudges_enabled() -> bool:
 def backfill_mode() -> str:
     """``off`` | ``winback`` | ``full``.
 
-    ``full`` exists only as an escape hatch and is not a supported setting —
+    ``full`` exists only as an escape hatch and is not a supported setting;
     it would evaluate the entire catalog against years of history.
     """
     return (os.environ.get("LEARNHOUSE_NUDGES_BACKFILL_MODE") or "off").strip().lower()
@@ -106,7 +106,7 @@ async def activation_date(
     wrote the row *and* read it, so the boundary was whatever instant the job
     happened to start, and nothing could ever move an organization out of the
     pre-existing set afterwards. Making it configurable means the operator can
-    place the line deliberately — including in the past, to treat existing
+    place the line deliberately, including in the past, to treat existing
     organizations as ordinary.
     """
     raw = (os.environ.get("LEARNHOUSE_NUDGES_ACTIVATION_DATE") or "").strip()
@@ -205,7 +205,7 @@ def _is_preexisting(snapshot: OrgSnapshot, cutoff: datetime) -> bool:
 def _backfill_allows(spec: NudgeSpec, snapshot: OrgSnapshot, cutoff: datetime) -> bool:
     """Whether a spec may reach an organization older than this system.
 
-    This is the structural half of the backfill guard — the other half is
+    This is the structural half of the backfill guard; the other half is
     ``day_max`` on every spec, which already excludes old orgs from the
     recency-anchored tracks. Together they mean the worst case for a long
     dormant org on day one is one email, not the whole catalog.
@@ -269,7 +269,7 @@ TRACK_STATS: dict[str, tuple[str, ...]] = {
     "audience": ("members", "learners"),
     "dormancy": ("courses", "lessons"),
     "milestone": ("learners", "completed"),
-    # The whole message is "your work is still here" — the figures say it
+    # The whole message is "your work is still here", and the figures say it
     # faster than the sentence does.
     "reactivation": ("courses", "lessons"),
     # activation: an empty org has nothing but zeros, and a row of them reads
@@ -361,7 +361,7 @@ async def _claim(
 async def _record_sent(spec: NudgeSpec, snapshot: OrgSnapshot, admin: AdminRow) -> None:
     """Emit an analytics event for one delivered nudge.
 
-    Without this there is no way to tell which of the catalog earns its place —
+    Without this there is no way to tell which of the catalog earns its place;
     the ledger records that mail went out, not whether it brought anyone back.
     Failures are swallowed: analytics must never be the reason a send loop dies.
     """
@@ -429,7 +429,7 @@ async def run_nudges(
         and only is None
         and not await _ledger_has_rows(db_session)
     ):
-        logger.info("First nudge run here — seeding the backlog instead of sending")
+        logger.info("First nudge run here: seeding the backlog instead of sending")
         seeded = await run_nudges(
             db_session, seed=True, now=now, org_id=org_id, force=True
         )
@@ -559,12 +559,20 @@ async def run_nudges(
                     )
                     break
 
+                # Square mark first, wide logo as the fallback: same chain
+                # as the transactional mail and the frontend's OrgSquareLogo.
                 logo_url = None
-                if snapshot.logo_image and snapshot.org_uuid and media_base:
-                    logo_url = (
-                        f"{media_base}/content/orgs/{snapshot.org_uuid}"
-                        f"/logos/{snapshot.logo_image}"
-                    )
+                if snapshot.org_uuid and media_base:
+                    if snapshot.square_logo_image:
+                        logo_url = (
+                            f"{media_base}/content/orgs/{snapshot.org_uuid}"
+                            f"/square_logos/{snapshot.square_logo_image}"
+                        )
+                    elif snapshot.logo_image:
+                        logo_url = (
+                            f"{media_base}/content/orgs/{snapshot.org_uuid}"
+                            f"/logos/{snapshot.logo_image}"
+                        )
 
                 result = send_nudge_email(
                     nudge_id=spec.id,
@@ -578,6 +586,8 @@ async def run_nudges(
                     track=spec.track,
                     stats=_stats_for(spec, snapshot),
                     sender_name=snapshot.sender_name,
+                    brand_color=snapshot.brand_color,
+                    powered_by=snapshot.powered_by,
                     **_copy_vars(snapshot, spec),
                 )
 

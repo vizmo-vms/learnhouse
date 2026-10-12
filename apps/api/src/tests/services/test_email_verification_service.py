@@ -44,6 +44,21 @@ async def _make_user(db, **overrides):
     return user
 
 
+async def _join_org(db, user, org):
+    from src.db.user_organizations import UserOrganization
+
+    db.add(
+        UserOrganization(
+            user_id=user.id,
+            org_id=org.id,
+            role_id=4,
+            creation_date=str(datetime.now()),
+            update_date=str(datetime.now()),
+        )
+    )
+    await db.commit()
+
+
 class TestEmailVerificationService:
     def test_generate_verification_token(self):
         with patch(
@@ -92,6 +107,7 @@ class TestEmailVerificationService:
             email="newuser@test.com",
             user_uuid="user_new",
         )
+        await _join_org(db, user, org)
         fake_redis = Mock()
         fake_redis.setex = Mock()
 
@@ -145,6 +161,66 @@ class TestEmailVerificationService:
         assert mock_send.call_args_list[1].kwargs["organization"] is None
 
     @pytest.mark.asyncio
+    async def test_org_signup_mail_carries_the_orgs_branding(self, mock_request, db, org):
+        from src.db.organization_config import OrganizationConfig
+
+        org.logo_image = "logo.png"
+        db.add(org)
+        db.add(
+            OrganizationConfig(
+                org_id=org.id,
+                config={
+                    "config_version": "2.0",
+                    "plan": "pro",
+                    "customization": {
+                        "general": {
+                            "default_language": "de",
+                            "email_sender_name": "Test Academy",
+                            "color": "#abc",
+                            "watermark": False,
+                        }
+                    },
+                },
+                creation_date=str(datetime.now()),
+                update_date=str(datetime.now()),
+            )
+        )
+        await db.commit()
+        user = await _make_user(
+            db, id=31, username="branded", email="branded@test.com", user_uuid="user_branded"
+        )
+        await _join_org(db, user, org)
+
+        with patch(
+            "src.services.users.email_verification.get_redis_connection",
+            return_value=Mock(setex=Mock()),
+        ), patch(
+            "src.services.users.email_verification.get_base_url_from_request",
+            return_value="https://learnhouse.test",
+        ), patch(
+            "src.services.email.utils.get_media_base_url", return_value="https://api.test"
+        ), patch(
+            "src.core.deployment_mode.get_deployment_mode", return_value="saas"
+        ), patch(
+            "src.services.users.email_verification.send_email_verification_email",
+            return_value=True,
+        ) as mock_send:
+            await send_verification_email(mock_request, db, user, org.id)
+            await send_verification_email(mock_request, db, user, None)
+
+        org_call = mock_send.call_args_list[0].kwargs
+        assert org_call["lang"] == "de"
+        assert org_call["sender_name"] == "Test Academy"
+        assert org_call["logo_url"] == "https://api.test/content/orgs/org_test/logos/logo.png"
+        assert org_call["brand_color"] == "#aabbcc"
+        assert org_call["powered_by"] is False
+
+        # Platform signup: nothing borrowed from any organization.
+        platform_call = mock_send.call_args_list[1].kwargs
+        for key in ("lang", "sender_name", "logo_url", "brand_color", "powered_by"):
+            assert key not in platform_call, key
+
+    @pytest.mark.asyncio
     async def test_send_verification_email_errors(self, mock_request, db, org):
         user = await _make_user(
             db,
@@ -153,6 +229,7 @@ class TestEmailVerificationService:
             email="sendfail@test.com",
             user_uuid="user_sendfail",
         )
+        await _join_org(db, user, org)
 
         with pytest.raises(HTTPException) as missing_org_exc:
             await send_verification_email(
@@ -447,7 +524,7 @@ class TestEmailVerificationService:
         await db.commit()
 
         # SECURITY: resend-verification must return the same generic response
-        # whether or not the account exists or is already verified — otherwise
+        # whether or not the account exists or is already verified; otherwise
         # it can be used to enumerate accounts or probe verification state.
         with patch(
             "src.services.users.email_verification.check_verification_resend_rate_limit",

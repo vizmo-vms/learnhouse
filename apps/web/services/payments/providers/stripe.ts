@@ -3,7 +3,7 @@
 // Each payment provider gets its own file here.
 // The generic payment config and offer services live in payments.ts / offers.ts.
 import { getAPIUrl } from '@services/config/config';
-import { RequestBodyWithAuthHeader, errorHandling, secureFetch } from '@services/utils/ts/requests';
+import { RequestBodyWithAuthHeader, errorHandling, getResponseMetadata, secureFetch } from '@services/utils/ts/requests';
 
 /**
  * Generate a Stripe Connect OAuth link for the given org.
@@ -25,22 +25,27 @@ export async function getStripeOnboardingLink(
 /**
  * Exchange the Stripe OAuth authorization code for an access token and
  * store the connected account ID in the org's PaymentsConfig.
+ *
+ * Returns the response instead of throwing: this is a server action, and a
+ * thrown error reaches the browser without its message in production, which
+ * is the part the admin needs to see.
  */
 export async function verifyStripeConnection(
   orgId: number,
   code: string,
+  state: string,
   access_token: string
 ) {
+  const params = new URLSearchParams({ code, state, org_id: String(orgId) })
   const result = await secureFetch(
-    `${getAPIUrl()}payments/stripe/oauth/callback?code=${encodeURIComponent(code)}&org_id=${encodeURIComponent(String(orgId))}`,
+    `${getAPIUrl()}payments/stripe/oauth/callback?${params}`,
     RequestBodyWithAuthHeader('GET', null, null, access_token)
   );
-  const res = await errorHandling(result);
-  return res;
+  return getResponseMetadata(result);
 }
 
 /**
- * Easy Mode — create a Stripe Express account (if not yet created) and
+ * Easy Mode: create a Stripe Express account (if not yet created) and
  * return an onboarding link. The org owner opens this URL to complete setup.
  */
 export async function getStripeExpressOnboardingLink(
@@ -57,7 +62,7 @@ export async function getStripeExpressOnboardingLink(
 }
 
 /**
- * Easy Mode — generate a fresh onboarding link when the previous one has expired.
+ * Easy Mode: generate a fresh onboarding link when the previous one has expired.
  */
 export async function refreshStripeExpressOnboardingLink(
   orgId: number,
@@ -73,7 +78,7 @@ export async function refreshStripeExpressOnboardingLink(
 }
 
 /**
- * Easy Mode — get a Stripe Express hosted dashboard URL for the connected account.
+ * Easy Mode: get a Stripe Express hosted dashboard URL for the connected account.
  */
 export async function getStripeExpressDashboardLink(
   orgId: number,

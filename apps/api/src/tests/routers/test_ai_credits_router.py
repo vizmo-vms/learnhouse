@@ -41,7 +41,7 @@ def ee_mode():
     The credit mutators are superadmin-only and therefore Enterprise-only. The
     suite pins 'oss' globally (see conftest), which would 403 them before any
     of the behaviour under test runs. Tests that specifically want OSS patch
-    the same target again — the inner patch wins.
+    the same target again; the inner patch wins.
     """
     with patch("src.core.deployment_mode.get_deployment_mode", return_value="ee"):
         yield
@@ -245,6 +245,37 @@ class TestAICreditsRouter:
                 json={"amount": -1},
             )
         assert response.status_code == 400
+
+
+class TestAICreditsQueryCount:
+    async def test_org_config_is_loaded_once_per_request(self, client, db, org, engine):
+        """The MFA gate, the auth-policy gate and the summary all read the org
+        config; they must share one SELECT instead of issuing one each."""
+        from sqlalchemy import event
+
+        from src.db.organization_config import OrganizationConfig
+
+        db.add(OrganizationConfig(org_id=org.id, config={"config_version": "1.0"}))
+        await db.commit()
+        db.expunge_all()
+
+        statements = []
+
+        def _record(conn, cursor, statement, params, context, executemany):
+            statements.append(statement)
+
+        event.listen(engine.sync_engine, "before_cursor_execute", _record)
+        try:
+            with patch("src.security.features_utils.usage._get_redis_client") as redis:
+                redis.return_value.mget.return_value = (None, None)
+                redis.return_value.get.return_value = None
+                resp = await client.get(f"/api/v1/orgs/{org.id}/ai-credits")
+        finally:
+            event.remove(engine.sync_engine, "before_cursor_execute", _record)
+
+        assert resp.status_code == 200, resp.text
+        config_selects = [s for s in statements if "FROM organizationconfig" in s]
+        assert len(config_selects) == 1
 
 
 class TestAICreditsOSSGate:

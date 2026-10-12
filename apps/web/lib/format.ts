@@ -1,5 +1,5 @@
 /**
- * Locale-aware date and number formatting — one place, so a locale change
+ * Locale-aware date and number formatting in one place, so a locale change
  * reaches every date on screen.
  *
  * Before this existed, all 12 dayjs call sites extended `relativeTime` locally
@@ -49,24 +49,56 @@ const DAYJS_LOCALES: Record<string, () => Promise<unknown>> = {
   zh: () => import('dayjs/locale/zh'),
 }
 
+const INTL_LOCALE_CACHE_MAX = 64
+const intlLocaleCache = new Map<string, string>()
+
 /**
- * NUMERALS — a deliberate product decision, kept behind one function.
+ * NUMERALS: a deliberate product decision, kept behind one function.
  *
  * `Intl.NumberFormat('ar')` resolves to Eastern Arabic-Indic digits (٠١٢٣٤) on
  * most ICU builds, and `ar-SA` additionally defaults to the Hijri calendar.
  * Neither is right here: prices, seat counts and analytics sit next to
  * Latin-digit data coming straight from the API, and mixed numeral systems on
  * one screen read as broken rather than localised. Arabic-speaking regions are
- * also split — ar-EG and ar-SA use Arabic-Indic, ar-MA and ar-TN use Western —
+ * also split (ar-EG and ar-SA use Arabic-Indic, ar-MA and ar-TN use Western),
  * so a bare `ar` has no single correct answer.
  *
  * So: Latin digits and the Gregorian calendar, everywhere. Month names and
  * relative times still localise. Flip this one function if an org asks for
  * native numerals.
  */
-function intlLocale(lng?: string): string {
-  const base = baseCode(lng)
-  return base === 'ar' || base === 'fa' ? `${base}-u-nu-latn` : lng || 'en'
+export function intlLocale(lng?: string): string {
+  const key = lng ?? ''
+  const cached = intlLocaleCache.get(key)
+  if (cached) return cached
+  const tag = canonicalTag(lng)
+  const base = baseCode(tag)
+  const locale = base === 'ar' || base === 'fa' ? `${base}-u-nu-latn` : tag
+  // The input can come from a request cookie, so on the server it isn't a
+  // small fixed set; keep the cache bounded.
+  if (intlLocaleCache.size >= INTL_LOCALE_CACHE_MAX) intlLocaleCache.clear()
+  intlLocaleCache.set(key, locale)
+  return locale
+}
+
+/**
+ * `Intl.*` throws a RangeError ("Incorrect locale information provided") on a
+ * malformed tag, which took down whole pages. The language can come from a
+ * cookie, localStorage or the browser, so expect `en_US`, empty strings and
+ * outright junk; fall back to the base language, then English.
+ */
+function canonicalTag(lng?: string): string {
+  const raw = String(lng || '').trim().replace(/_/g, '-')
+  for (const candidate of [raw, raw.split('-')[0]]) {
+    if (!candidate) continue
+    try {
+      const [tag] = Intl.getCanonicalLocales(candidate)
+      if (tag) return tag
+    } catch {
+      // Malformed; try the next, shorter candidate.
+    }
+  }
+  return 'en'
 }
 
 /**
@@ -114,7 +146,7 @@ export function formatDateTime(
   return formatDate(value, lng, { dateStyle: 'medium', timeStyle: 'short', ...options })
 }
 
-/** "2 hours ago". Words, not digits — which is why dayjs is fine here. */
+/** "2 hours ago". Words, not digits, which is why dayjs is fine here. */
 export function formatRelative(value: string | number | Date, lng?: string): string {
   return dayjs(value).locale(baseCode(lng)).fromNow()
 }

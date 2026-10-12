@@ -1,7 +1,7 @@
 """Notification sent when an account becomes a member of an organization.
 
 Every membership path funnels through :func:`notify_user_joined_org` so a user
-who joins an org gets the same greeting regardless of how they got in — invite
+who joins an org gets the same greeting regardless of how they got in: invite
 code, open join, an OAuth invite accepted with an existing account, or admin
 provisioning.
 
@@ -56,11 +56,9 @@ async def notify_user_joined_org(
         ).scalars().first()
 
         # Imported here: these modules pull in org services that import this one.
-        from src.services.email.utils import get_org_logo_url, get_org_signup_base_url
-        from src.services.orgs.orgs import (
-            get_org_default_language,
-            resolve_org_sender_name,
-        )
+        from src.services.email.branding import resolve_org_email_branding
+        from src.services.email.safe_text import email_org_name, email_user_name
+        from src.services.email.utils import get_org_signup_base_url
         from src.services.users.emails import send_org_join_email
 
         base_url = await get_org_signup_base_url(
@@ -69,15 +67,13 @@ async def notify_user_joined_org(
 
         send_org_join_email(
             email=user.email,
-            username=user.username,
-            org_name=org.name,
-            # Org landing page, not `/home` — `/home` is the platform org
+            username=email_user_name(user.username),
+            org_name=email_org_name(org.name),
+            # Org landing page, not `/home`, because `/home` is the platform org
             # picker on every host and would deroute the user straight back
             # out of the org they just joined.
             cta_url=base_url.rstrip("/") or "/",
-            lang=get_org_default_language(org_config),
-            logo_url=get_org_logo_url(org, request),
-            sender_name=resolve_org_sender_name(org_config),
+            **resolve_org_email_branding(org, org_config, request).as_kwargs(),
         )
     except Exception:
         logger.warning(

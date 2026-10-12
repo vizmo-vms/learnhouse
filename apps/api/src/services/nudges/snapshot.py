@@ -12,7 +12,7 @@ from typing import Optional
 from src.services.security.account_age import parse_creation_date
 
 # An org that has done something very recently is not dormant, whatever the
-# calendar says about its anchors — chasing it would be noise.
+# calendar says about its anchors; chasing it would be noise.
 ACTIVE_WINDOW_DAYS = 3
 
 # Past this, every ordinary track's `day_max` has long since excluded the org.
@@ -44,7 +44,7 @@ class OrgSnapshot:
 
     Timestamps are tz-aware UTC. The ones sourced from naive string columns
     (course/activity/org dates) are parsed through ``parse_creation_date`` and
-    are accurate to roughly a day — every catalog window is at least two days
+    are accurate to roughly a day; every catalog window is at least two days
     wide so that fuzziness can never flip eligibility.
     """
 
@@ -55,9 +55,15 @@ class OrgSnapshot:
     lang: str
     org_active_flag: bool = True
     logo_image: Optional[str] = None
+    # Square logo variant from the org config; preferred over ``logo_image``.
+    square_logo_image: Optional[str] = None
     org_uuid: Optional[str] = None
     # From display name for this org's mail; "" means use the platform default.
     sender_name: str = ""
+    # Normalized ``#rrggbb`` accent for the CTA button, or None for the default.
+    brand_color: Optional[str] = None
+    # Whether the mail carries the "Powered by LearnHouse" line (org watermark).
+    powered_by: bool = True
 
     created_at: Optional[datetime] = None
     org_updated_at: Optional[datetime] = None
@@ -137,7 +143,7 @@ class OrgSnapshot:
         Deliberately excludes the org's own creation and update timestamps.
         Creating an account is not engagement: counting it would mark every
         brand-new org as active for its first few days, which is exactly the
-        window the activation emails exist to cover — they would never fire.
+        window the activation emails exist to cover, so they would never fire.
 
         ``user_activity_day`` would be the ideal signal, but it is SaaS-gated
         and only recently populated, and ``user.last_login_at`` is null for the
@@ -162,7 +168,7 @@ class OrgSnapshot:
         """Newest signal of any kind, falling back to the org's own dates.
 
         Always defined for a real org, which is what the dormancy track needs
-        to anchor against — including for organizations that predate any of
+        to anchor against, including for organizations that predate any of
         this instrumentation.
         """
         fallbacks = [t for t in (self.org_updated_at, self.created_at) if t is not None]

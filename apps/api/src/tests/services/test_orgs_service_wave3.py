@@ -39,6 +39,7 @@ from src.services.orgs.orgs import (
     update_org_communities_config,
     update_org_courses_config,
     update_org_favicon,
+    update_org_square_logo,
     update_org_footer_text_config,
     update_org_font_config,
     update_org_landing,
@@ -458,6 +459,7 @@ class TestOrgCreationAndListingWave3:
             (update_org, (OrganizationUpdate(name="Missing", slug="missing"),)),
             (update_org_logo, (SimpleNamespace(filename="logo.png"),)),
             (update_org_favicon, (SimpleNamespace(filename="favicon.png"),)),
+            (update_org_square_logo, (SimpleNamespace(filename="square.png"),)),
             (update_org_thumbnail, (SimpleNamespace(filename="thumbnail.png"),)),
             (update_org_preview, (SimpleNamespace(filename="preview.png"),)),
             (delete_org, tuple()),
@@ -544,9 +546,14 @@ class TestOrgCreationAndListingWave3:
             "src.services.orgs.orgs.upload_org_favicon",
             new_callable=AsyncMock,
             return_value="stored-favicon.png",
+        ), patch(
+            "src.services.orgs.orgs.upload_org_square_logo",
+            new_callable=AsyncMock,
+            return_value="stored-square.png",
         ):
             missing_config_calls = [
                 (update_org_favicon, (SimpleNamespace(filename="favicon.png"),)),
+                (update_org_square_logo, (SimpleNamespace(filename="square.png"),)),
                 (update_org_signup_mechanism, ("inviteOnly",)),
                 (update_org_ai_config, (True,)),
                 (update_org_communities_config, (True,)),
@@ -940,6 +947,9 @@ class TestOrgConfigBranchesWave3:
             "src.services.orgs.orgs.rbac_check",
             new_callable=AsyncMock,
             return_value=True,
+        ), patch(
+            "src.services.orgs.orgs.require_org_role_permission",
+            new_callable=AsyncMock,
         ), patch(
             "src.services.orgs.orgs.upload_org_favicon",
             new_callable=AsyncMock,

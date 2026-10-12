@@ -52,7 +52,6 @@ const CATEGORIES: Record<string, { label: string; keys: string[] }> = {
     label: 'OAuth',
     keys: [
       'LEARNHOUSE_GOOGLE_CLIENT_ID', 'LEARNHOUSE_GOOGLE_CLIENT_SECRET',
-      'NEXT_PUBLIC_UNSPLASH_ACCESS_KEY',
     ],
   },
 }
@@ -160,7 +159,7 @@ export async function envCommand() {
     }
 
     // Show current values
-    p.log.step(`${cat.label} — Current Values`)
+    p.log.step(`${cat.label}: Current Values`)
     for (const key of presentKeys) {
       p.log.message(`  ${pc.dim(key)} = ${maskValue(key, envMap.get(key)!)}`)
     }

@@ -37,6 +37,7 @@ from src.security.features_utils.usage import _plan_from_config_dict
 from src.security.rbac.constants import ADMIN_ROLE_ID
 from src.services.nudges.snapshot import AdminRow, OrgSnapshot, parse_ts
 from src.services.orgs.orgs import get_org_default_language, resolve_org_sender_name
+from src.services.email.branding import resolve_org_brand_color, resolve_org_powered_by
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +69,7 @@ async def _course_facts(db_session: AsyncSession, org_ids: Sequence[int]) -> dic
     ).all()
     facts = _rows_by_org(rows)
 
-    # The newest course, and the oldest still-unpublished one — nudges link to
+    # The newest course, and the oldest still-unpublished one. Nudges link to
     # a specific course by name, never to a generic list.
     newest: dict[int, tuple[str, str]] = {}
     drafts: dict[int, tuple[str, str]] = {}
@@ -157,7 +158,7 @@ async def _admin_rows(db_session: AsyncSession, org_ids: Sequence[int]) -> dict:
 
 
 async def _simple_count_facts(db_session: AsyncSession, org_ids: Sequence[int]) -> dict:
-    """Chapters, activities and trail runs — three small grouped queries."""
+    """Chapters, activities and trail runs: three small grouped queries."""
     chapters = _rows_by_org(
         (
             await db_session.execute(
@@ -290,7 +291,7 @@ async def _ai_credit_usage(org_ids: Sequence[int]) -> dict[int, int]:
 async def _activity_day_facts(db_session: AsyncSession, org_ids: Sequence[int]) -> dict:
     """Newest recorded activity day per org.
 
-    The best freshness signal we have, and absent for most orgs — the table is
+    The best freshness signal we have, and absent for most orgs: the table is
     SaaS-gated and only recently populated, so it refines ``last_touch`` rather
     than defining it.
     """
@@ -310,7 +311,7 @@ async def _activity_day_facts(db_session: AsyncSession, org_ids: Sequence[int]) 
 async def _first_nudge_facts(db_session: AsyncSession, org_ids: Sequence[int]) -> dict:
     """When each org first received a nudge.
 
-    The reactivation ladder measures from this instead of from last activity —
+    The reactivation ladder measures from this instead of from last activity;
     a long-dormant org's last-touch figure never moves, so nothing anchored on
     it can advance through a sequence.
     """
@@ -355,6 +356,23 @@ async def _admin_login_facts(db_session: AsyncSession, org_ids: Sequence[int]) -
         )
     ).all()
     return _rows_by_org(rows)
+
+
+def _square_logo_from_config(config: Optional[OrganizationConfig]) -> Optional[str]:
+    """``customization.general.square_logo_image`` (v1 ``general.*``) or None."""
+    cfg = getattr(config, "config", None)
+    if not isinstance(cfg, dict):
+        return None
+
+    def _section(parent, key):
+        value = parent.get(key) if isinstance(parent, dict) else None
+        return value if isinstance(value, dict) else {}
+
+    return (
+        _section(_section(cfg, "customization"), "general").get("square_logo_image")
+        or _section(cfg, "general").get("square_logo_image")
+        or None
+    )
 
 
 def _org_is_active(config: Optional[OrganizationConfig]) -> bool:
@@ -414,9 +432,12 @@ async def build_snapshots(
                 org_name=org.name,
                 org_uuid=org.org_uuid,
                 logo_image=getattr(org, "logo_image", None),
+                square_logo_image=_square_logo_from_config(config),
                 plan=_plan_from_config_dict(config.config if config else {}),
                 lang=get_org_default_language(config),
                 sender_name=resolve_org_sender_name(config),
+                brand_color=resolve_org_brand_color(config),
+                powered_by=resolve_org_powered_by(config),
                 org_active_flag=_org_is_active(config),
                 created_at=parse_ts(org.creation_date),
                 org_updated_at=parse_ts(org.update_date),
@@ -482,7 +503,7 @@ async def iter_snapshots(
     cursor = 0
     while True:
         # The shared demo org is excluded from every nudge. Its admins are
-        # prospects who joined to look around, and its activity is synthetic —
+        # prospects who joined to look around, and its activity is synthetic;
         # nudging them about how quiet their academy is, or congratulating them
         # on fake enrolments, is worse than staying silent. The filter is on the
         # scan itself so no nudge in the catalog can opt back in.
