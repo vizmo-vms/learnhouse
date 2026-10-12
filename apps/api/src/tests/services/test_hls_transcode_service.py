@@ -249,4 +249,3 @@ async def test_transcode_skips_source_without_video_stream(monkeypatch, tmp_path
     src.write_bytes(b"data")
     result = await ht.transcode_source_to_hls(str(src), str(tmp_path / "out"))
     assert result == {"unsupported": "no_video_stream"}
-

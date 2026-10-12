@@ -32,7 +32,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({ onImageUploaded, c
     // Validate file using reusable utility
     const { validateFile } = await import('@/lib/file-validation')
     const validation = validateFile(file, [fileType])
-    
+
     if (!validation.valid) {
       toast.error(validation.error!)
       e.target.value = '' // Clear the input
