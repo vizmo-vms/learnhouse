@@ -82,7 +82,7 @@ export function getVideoBlockStreamUrl(
 
 /**
  * HLS master-playlist URL for a video BLOCK (adaptive streaming). The API
- * presigns segment URLs to R2 — same pipeline as activity videos.
+ * presigns segment URLs to R2, the same pipeline as activity videos.
  */
 export function getVideoBlockHlsMasterUrl(
   orgUUID: string,
@@ -285,6 +285,11 @@ export function getOrgOgImageMediaDirectory(orgUUID: string, fileId: string) {
 
 export function getOrgAuthBackgroundMediaDirectory(orgUUID: string, fileId: string) {
   let uri = `${getMediaUrl()}content/orgs/${orgUUID}/auth_backgrounds/${fileId}`
+  return uri
+}
+
+export function getOrgSquareLogoMediaDirectory(orgUUID: string, fileId: string) {
+  let uri = `${getMediaUrl()}content/orgs/${orgUUID}/square_logos/${fileId}`
   return uri
 }
 

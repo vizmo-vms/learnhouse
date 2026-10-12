@@ -181,7 +181,7 @@ async def test_backfill_respects_limit(monkeypatch, db, org, course, chapter, ac
 
 
 # --------------------------------------------------------------------------
-# transcode_activity orchestration (mocked — no ffmpeg/S3 needed)
+# transcode_activity orchestration (mocked, no ffmpeg/S3 needed)
 # --------------------------------------------------------------------------
 
 def _mock_transcode_deps(monkeypatch, *, resolve, fetch=True, transcode=None,
@@ -190,7 +190,7 @@ def _mock_transcode_deps(monkeypatch, *, resolve, fetch=True, transcode=None,
     monkeypatch.setattr(hls_jobs, "_fetch_source", lambda src, dst: fetch)
     monkeypatch.setattr(hls_jobs, "transcode_source_to_hls", _aret(transcode))
     monkeypatch.setattr(hls_jobs, "is_s3_enabled", lambda: s3)
-    monkeypatch.setattr(hls_jobs, "upload_directory_to_s3", lambda out, prefix: upload)
+    monkeypatch.setattr(hls_jobs, "upload_directory_to_s3_parallel", lambda out, prefix, **k: upload)
     statuses = []
 
     async def _set(uuid, status, **extra):
@@ -234,6 +234,47 @@ async def test_transcode_activity_upload_fails(monkeypatch):
     statuses = _mock_transcode_deps(monkeypatch, resolve=_INFO, transcode=_RESULT, upload=False)
     assert await hls_jobs.transcode_activity("act") is False
     assert statuses[-1] == ("failed", {"error": "upload_failed"})
+
+
+async def test_transcode_activity_unsupported_source_is_terminal(monkeypatch):
+    statuses = _mock_transcode_deps(
+        monkeypatch, resolve=_INFO, transcode={"unsupported": "no_video_stream"}
+    )
+    uploads = []
+    monkeypatch.setattr(
+        hls_jobs, "upload_directory_to_s3_parallel", lambda *a, **k: uploads.append(a)
+    )
+    assert await hls_jobs.transcode_activity("act") is False
+    assert statuses[-1] == ("unsupported", {"reason": "no_video_stream"})
+    assert uploads == []
+
+
+async def test_cancelled_upload_stops_before_scratch_dir_is_removed(monkeypatch):
+    """A job cancelled mid-upload (timeout / shutdown) must tell the upload
+    thread to stop; the scratch dir is deleted right after, and an unstopped
+    thread logs ENOENT for every remaining segment."""
+    import threading
+
+    _mock_transcode_deps(monkeypatch, resolve=_INFO, transcode=_RESULT)
+    started = threading.Event()
+    seen = {}
+
+    def _slow_upload(out_dir, prefix, stop=None):
+        started.set()
+        seen["stopped"] = stop.wait(timeout=5)
+        return False
+
+    monkeypatch.setattr(hls_jobs, "upload_directory_to_s3_parallel", _slow_upload)
+    task = asyncio.create_task(hls_jobs.transcode_activity("act"))
+    assert await asyncio.to_thread(started.wait, 5), "upload never started"
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    for _ in range(500):
+        if "stopped" in seen:
+            break
+        await asyncio.sleep(0.01)
+    assert seen.get("stopped") is True
 
 
 async def test_transcode_activity_exception_marks_failed(monkeypatch):
@@ -371,7 +412,7 @@ async def test_consumer_loop_drains_and_transcodes(monkeypatch):
     async def _tr(uuid):
         processed.append(uuid)
         if uuid == "a1":
-            raise RuntimeError("boom")  # one job errors — consumer must survive
+            raise RuntimeError("boom")  # one job errors; the consumer must survive
         return True
 
     monkeypatch.setattr(hls_jobs, "transcode_activity", _tr)
@@ -476,10 +517,11 @@ async def test_reconcile_requeues_unfinished_skips_ready(monkeypatch, db, org, c
     await _add_video_activity(db, org, course, "proc1", filename="b.mp4", hls_status="processing")
     await _add_video_activity(db, org, course, "fail1", filename="c.mp4", hls_status="failed")
     await _add_video_activity(db, org, course, "rdy1", filename="d.mp4", hls_status="ready")
+    await _add_video_activity(db, org, course, "aud1", filename="e.mp4", hls_status="unsupported")
     r = _FakeRedis()
     monkeypatch.setattr(hls_jobs, "get_redis_client", lambda: r)
     out = await hls_jobs.reconcile_unfinished()
-    assert set(r.pushed) == {"todo1", "proc1", "fail1"}  # ready skipped
+    assert set(r.pushed) == {"todo1", "proc1", "fail1"}  # ready + unsupported skipped
     assert out["requeued"] == 3
 
 
@@ -786,7 +828,7 @@ def test_scratch_dir_cleans_up_and_never_raises_on_busy_tree(monkeypatch):
     """A file appearing mid-cleanup used to surface as "HLS job crashed".
 
     tempfile.TemporaryDirectory raises OSError(39, "Directory not empty") when
-    something writes into the tree while it is being removed — after the
+    something writes into the tree while it is being removed, after the
     transcode had already succeeded and uploaded.
     """
     seen = {}
@@ -812,3 +854,38 @@ def test_scratch_dir_cleans_up_and_never_raises_on_busy_tree(monkeypatch):
 
     monkeypatch.setattr(hls_jobs.shutil, "rmtree", real_rmtree)
     real_rmtree(leftover, ignore_errors=True)
+
+
+async def test_upload_output_local_copy_skips_files_once_stopped(monkeypatch, tmp_path):
+    """Without S3 the output is copied locally; a cancelled job must not keep
+    copying files that scratch_dir is about to delete."""
+    import shutil
+    import threading
+
+    src = tmp_path / "hls"
+    src.mkdir()
+    for i in range(3):
+        (src / f"seg_{i}.ts").write_bytes(b"x")
+    dst = tmp_path / "out"
+    monkeypatch.setattr(hls_jobs, "is_s3_enabled", lambda: False)
+
+    copied = []
+    real_copy2 = shutil.copy2
+    first_copy = threading.Event()
+    release = threading.Event()
+
+    def _copy2(s, d, *a, **k):
+        copied.append(s)
+        first_copy.set()
+        release.wait(timeout=5)
+        return real_copy2(s, d, *a, **k)
+
+    monkeypatch.setattr(shutil, "copy2", _copy2)
+    task = asyncio.create_task(hls_jobs._upload_output(str(src), str(dst)))
+    assert await asyncio.to_thread(first_copy.wait, 5)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    release.set()
+    await asyncio.sleep(0.2)
+    assert len(copied) == 1

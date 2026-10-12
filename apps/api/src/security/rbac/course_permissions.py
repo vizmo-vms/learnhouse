@@ -6,7 +6,7 @@ from fastapi import HTTPException
 
 from src.db.roles import Role, RoleTypeEnum
 from src.db.user_organizations import UserOrganization
-from src.db.users import AnonymousUser, APITokenUser, PublicUser
+from src.db.users import AnonymousUser, APITokenUser, PublicUser, SuperadminAPITokenUser
 from src.security.rbac.constants import ADMIN_OR_MAINTAINER_ROLE_IDS
 from src.security.superadmin import is_user_superadmin
 
@@ -41,6 +41,8 @@ async def can_manage_org_courses(user_id: int, org_id: int, db_session: AsyncSes
 
 async def has_org_course_permission(current_user, org_id: int, action: str, db_session: AsyncSession) -> bool:
     """Check a general course permission against the actual target organization."""
+    if isinstance(current_user, SuperadminAPITokenUser):
+        return True
     if isinstance(current_user, AnonymousUser):
         return False
     if isinstance(current_user, APITokenUser):
@@ -61,6 +63,8 @@ async def has_org_course_permission(current_user, org_id: int, action: str, db_s
 
 async def can_manage_courses(current_user, org_id: int, db_session: AsyncSession) -> bool:
     """Tokens use their own grants, never their creator's management role."""
+    if isinstance(current_user, SuperadminAPITokenUser):
+        return True
     if isinstance(current_user, APITokenUser):
         return (
             await has_org_course_permission(current_user, org_id, "read", db_session)
@@ -73,6 +77,8 @@ async def can_manage_courses(current_user, org_id: int, db_session: AsyncSession
 
 async def check_course_collection_access(current_user, org_id: int, db_session: AsyncSession) -> bool:
     """Return management visibility after enforcing token or session restrictions."""
+    if isinstance(current_user, SuperadminAPITokenUser):
+        return True
     if isinstance(current_user, APITokenUser):
         if not await has_org_course_permission(current_user, org_id, "read", db_session):
             raise HTTPException(403, "API token does not have course read access in this organization")

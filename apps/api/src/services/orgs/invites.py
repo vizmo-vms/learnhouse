@@ -19,9 +19,7 @@ from src.db.organizations import Organization, OrganizationRead
 from src.db.usergroups import UserGroup
 from src.db.users import AnonymousUser, PublicUser, UserRead
 from src.services.orgs.orgs import (
-    get_org_default_language,
     rbac_check,
-    resolve_org_sender_name,
 )
 from src.services.users.emails import send_invitation_email
 
@@ -436,8 +434,8 @@ async def delete_invite_code(
         )
 
     # SECURITY: the UUID is interpolated into a Redis SCAN glob pattern. Without
-    # validation an admin could pass wildcard characters (e.g. "*") to match —
-    # and delete — every invite code key for the org in a single call, instead
+    # validation an admin could pass wildcard characters (e.g. "*") to match,
+    # and delete, every invite code key for the org in a single call, instead
     # of the one resource the endpoint is meant to address. Restrict to the
     # exact "org_invite_code_<uuid4>" shape this codebase generates.
     if not re.fullmatch(r"org_invite_code_[0-9a-fA-F-]{36}", invite_code_uuid):
@@ -484,7 +482,7 @@ async def send_invite_email(
                     invite_code = json.loads(data).get("invite_code")
 
     # Build signup URL rooted at the org's own frontend subdomain (or primary
-    # verified custom domain if one is configured — passing db_session opts in).
+    # verified custom domain if one is configured; passing db_session opts in).
     from src.services.email.utils import get_org_signup_base_url
     org_base_url = await get_org_signup_base_url(
         org.slug, request, db_session=db_session, org_id=org.id
@@ -495,16 +493,16 @@ async def send_invite_email(
     else:
         signup_url = f"{org_base_url}/signup"
 
-    lang = "en"
-    sender_name = ""
+    from src.services.email.branding import resolve_org_email_branding
+
+    org_config = None
     if db_session is not None:
         try:
             org_config_stmt = select(OrganizationConfig).where(OrganizationConfig.org_id == org.id)
             org_config = (await db_session.execute(org_config_stmt)).scalars().first()
-            lang = get_org_default_language(org_config)
-            sender_name = resolve_org_sender_name(org_config)
         except Exception:
             pass
+    branding = resolve_org_email_branding(org, org_config, request)
 
     try:
         # Defense in depth: scrub any link out of the inviter's display name
@@ -518,8 +516,7 @@ async def send_invite_email(
             inviter_username=sanitize_display_name(user.username),
             invite_code=invite_code,
             signup_url=signup_url,
-            lang=lang,
-            sender_name=sender_name,
+            **branding.as_kwargs(),
         )
         return result is not None
     except Exception:

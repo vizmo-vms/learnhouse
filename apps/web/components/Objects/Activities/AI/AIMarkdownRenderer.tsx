@@ -4,6 +4,7 @@ import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
 import AIInteractivePreview from './AIInteractivePreview'
+import { MarkdownImageLink } from './MarkdownImageLink'
 
 type AIMarkdownRendererProps = {
   content: string
@@ -116,6 +117,10 @@ function AIMarkdownRenderer({ content, isStreaming = false, theme = 'dark' }: AI
       >
         {children}
       </a>
+    ),
+    // Model-provided images remain links rather than loading remote URLs.
+    img: ({ src, alt }) => (
+      <MarkdownImageLink src={src} alt={alt} className={`${isLight ? 'text-teal-700 hover:text-teal-900' : 'text-purple-400 hover:text-purple-300'} underline`} />
     ),
     // Horizontal rule
     hr: () => <hr className={`${isLight ? 'border-gray-200' : 'border-white/10'} my-3`} />,

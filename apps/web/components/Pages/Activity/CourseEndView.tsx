@@ -2,7 +2,7 @@ import React, { useMemo, useEffect, useState, useRef } from 'react';
 import toast from 'react-hot-toast';
 import dynamic from 'next/dynamic';
 const ReactConfetti = dynamic(() => import('react-confetti'), { ssr: false });
-import { Trophy, ArrowLeft, BookOpen, Target, Download, Shield } from 'lucide-react';
+import { Trophy, ArrowLeft, ArrowRight, BookOpen, Target, Download, Shield } from 'lucide-react';
 import Link from 'next/link';
 import { getUriWithOrg, getAbsoluteUriWithOrg } from '@services/config/config';
 import { getCourseThumbnailMediaDirectory } from '@services/media/media';
@@ -18,6 +18,7 @@ import {
   CERTIFICATE_CAPTURE_WIDTH,
 } from '@services/courses/certificateDownload';
 import { useTranslation } from 'react-i18next';
+import { getCourseEndConfig, resolveCourseEndButton } from './courseEndConfig';
 
 interface CourseEndViewProps {
   courseName: string;
@@ -48,8 +49,15 @@ const CourseEndView: React.FC<CourseEndViewProps> = ({
   // it directly would make the exported file depend on the viewer's screen.
   const certificateCaptureRef = useRef<HTMLDivElement>(null);
 
+  // Org-level customization of this screen (Organization settings → Course completion).
+  const courseEndConfig = getCourseEndConfig(org);
+  const courseEndMessage = (courseEndConfig.message || '').trim();
+  const nextButton = resolveCourseEndButton(courseEndConfig);
+  const nextButtonLabel = nextButton.text || t('courses.browse_all_courses');
+  const nextButtonClass = "inline-flex items-center space-x-2 bg-white text-gray-800 border border-gray-300 px-6 py-3 rounded-full hover:bg-gray-50 transition duration-200";
+
   // Certificate copy is hidden only when this course definitively has no
-  // certification. While the answer is loading — or if the request failed —
+  // certification. While the answer is loading (or if the request failed)
   // we keep the certificate UI, so a blip never tells a certified course's
   // students that no certificate is coming.
   const {
@@ -282,11 +290,11 @@ const CourseEndView: React.FC<CourseEndViewProps> = ({
             <span className="font-semibold text-gray-900"> {courseName}</span>
           </p>
           
-          <p className="text-gray-500">
-            {t('certificate.dedication_message')}
+          <p className="text-gray-500 whitespace-pre-line">
+            {courseEndMessage || t('certificate.dedication_message')}
           </p>
 
-          {/* Courses without certification skip this block entirely — no
+          {/* Courses without certification skip this block entirely: no
               spinner, no "no certificate" box for something never offered. */}
           {showCertificateUI && (
             isLoadingCertificate || isLoadingCertificationStatus ? (
@@ -349,7 +357,7 @@ const CourseEndView: React.FC<CourseEndViewProps> = ({
             )
           )}
 
-          <div className="pt-6">
+          <div className="pt-6 flex flex-wrap justify-center gap-4">
             <Link
               href={getUriWithOrg(orgslug, `/course/${courseUuid.replace('course_', '')}`)}
               className="inline-flex items-center space-x-2 bg-gray-800 text-white px-6 py-3 rounded-full hover:bg-gray-700 transition duration-200"
@@ -357,6 +365,17 @@ const CourseEndView: React.FC<CourseEndViewProps> = ({
               <ArrowLeft className="w-5 h-5" />
               <span>{t('courses.back_to_course')}</span>
             </Link>
+            {nextButton.external ? (
+              <a href={nextButton.href} className={nextButtonClass}>
+                <span>{nextButtonLabel}</span>
+                <ArrowRight className="w-5 h-5 rtl:rotate-180" />
+              </a>
+            ) : (
+              <Link href={getUriWithOrg(orgslug, nextButton.href)} className={nextButtonClass}>
+                <span>{nextButtonLabel}</span>
+                <ArrowRight className="w-5 h-5 rtl:rotate-180" />
+              </Link>
+            )}
           </div>
         </div>
       </div>

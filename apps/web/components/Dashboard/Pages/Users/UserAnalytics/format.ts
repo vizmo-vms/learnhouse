@@ -2,18 +2,18 @@ import { getUserAvatarMediaDirectory } from '@services/media/media'
 import { parseApiDate } from '@lib/format'
 
 export function fmtDate(dateStr: string | null | undefined): string {
-  if (!dateStr) return '—'
+  if (!dateStr) return 'n/a'
   try {
     const d = parseApiDate(dateStr)
     if (isNaN(d.getTime())) return '—'
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   } catch {
-    return '—'
+    return 'n/a'
   }
 }
 
 export function fmtDateTime(dateStr: string | null | undefined): string {
-  if (!dateStr) return '—'
+  if (!dateStr) return 'n/a'
   try {
     const d = parseApiDate(dateStr)
     if (isNaN(d.getTime())) return '—'
@@ -21,7 +21,7 @@ export function fmtDateTime(dateStr: string | null | undefined): string {
       month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit',
     })
   } catch {
-    return '—'
+    return 'n/a'
   }
 }
 

@@ -53,7 +53,9 @@ async def seed_activity(db: AsyncSession, org, course, regular_user):
     db.add(UserAuditEvent(
         event_type=UserAuditEventType.LOGIN,
         user_id=regular_user.id,
-        org_id=None,
+        # Recorded against this org: org-agnostic (NULL org_id) connection rows
+        # are cross-tenant and no longer reach an org admin's dossier.
+        org_id=org.id,
         ip="10.0.0.1",
         user_agent="pytest-agent",
         audit_metadata={"method": "password"},
@@ -296,7 +298,7 @@ class TestDossierRichSections:
         with _bypass_plan():
             resp = await client.get(f"/api/v1/audit/user/{regular_user.id}?org_id=1")
         a = resp.json()["assignments"][0]
-        # The max is summed from the tasks — it is not stored on the assignment, which
+        # The max is summed from the tasks; it is not stored on the assignment, which
         # is why the UI used to hardcode "/100".
         assert a["max_grade_value"] == 100
         assert a["grade_display"] == "88/100"
@@ -453,7 +455,7 @@ class TestDossierRichSections:
     async def test_connection_event_is_humanized(self, db, client, regular_user):
         db.add(UserAuditEvent(
             event_type=UserAuditEventType.LOGIN,
-            user_id=regular_user.id, org_id=None, ip="10.0.0.1",
+            user_id=regular_user.id, org_id=1, ip="10.0.0.1",
             user_agent=(
                 "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
                 "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -484,7 +486,7 @@ class TestDossierRichSections:
         assert resp.status_code == 200
         answer = resp.json()["assignments"][0]["tasks"][0]["answer"]
         # The snapshot in the submission is empty here, so there is nothing to render
-        # from — but the payload still describes itself instead of erroring.
+        # from, but the payload still describes itself instead of erroring.
         assert answer["kind"] in ("quiz", "raw")
 
 
@@ -552,11 +554,19 @@ class TestPlanAndTargetGuards:
             resp = await client.get(f"/api/v1/audit/user/{regular_user.id}?org_id=1")
         assert resp.status_code == 200
 
-    async def test_superadmin_target_bypasses_membership(self, client, regular_user):
-        """A superadmin target passes the in-org check without a membership row."""
-        with _bypass_plan(), patch("src.routers.audit.is_user_superadmin", new_callable=AsyncMock, return_value=True):
-            resp = await client.get(f"/api/v1/audit/user/{regular_user.id}?org_id=1")
-        assert resp.status_code == 200
+    async def test_superadmin_target_outside_org_is_not_disclosed(self, client, db):
+        """Being a superadmin is no reason to hand an org admin that person's
+        dossier: a target outside the org is a 404 like anyone else."""
+        from src.db.users import User
+
+        db.add(User(
+            id=50, username="ops", first_name="", last_name="", email="ops@test.com",
+            password="x", user_uuid="user_ops", is_superadmin=True,
+        ))
+        await db.commit()
+        with _bypass_plan():
+            resp = await client.get("/api/v1/audit/user/50?org_id=1")
+        assert resp.status_code == 404
 
     async def test_valid_days_param(self, client, regular_user, seed_activity):
         with _bypass_plan():
@@ -628,7 +638,7 @@ class TestExportCsvRows:
         assert activity.activity_uuid not in text
 
     async def test_csv_escapes_formula_injection_in_answers(self, db, client, regular_user, seed_rich):
-        """Question and answer columns carry free-form text — the likeliest vector."""
+        """Question and answer columns carry free-form text, the likeliest vector."""
         from src.db.courses.assignments import AssignmentTask
 
         task = (await db.execute(
@@ -676,7 +686,7 @@ class TestExportCsvRows:
         assert rows[2]["detail"] == 3
 
     async def test_every_row_uses_declared_columns(self, seed_rich, db, org, regular_user):
-        """csv.DictWriter raises on an unknown key — catch a typo'd kwarg here."""
+        """csv.DictWriter raises on an unknown key, so catch a typo'd kwarg here."""
         from src.routers.audit import _CSV_COLUMNS, _dossier_to_csv_rows
         from src.services.audit.dossier import build_user_dossier
 
@@ -897,7 +907,7 @@ class TestRecordAuditEvent:
         assert len(rows) == 0
 
     async def test_record_swallows_errors(self):
-        """A write failure is logged, never raised — auditing must not break the action."""
+        """A write failure is logged, never raised; auditing must not break the action."""
         def _boom():
             raise RuntimeError("db down")
 

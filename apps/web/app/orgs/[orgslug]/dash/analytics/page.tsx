@@ -12,13 +12,13 @@ import FeatureGate from '@components/Dashboard/Shared/FeatureGate/FeatureGate'
 import { usePlan } from '@components/Hooks/usePlan'
 import ExportAnalyticsButton from '@components/Dashboard/Analytics/AnalyticsExport'
 
-// Core widgets — dynamic to code-split recharts
+// Core widgets: dynamic to code-split recharts
 const EventOverview = dynamic(() => import('@components/Dashboard/Analytics/EventOverview'))
 const CoreWidgetsRow = dynamic(() => import('@components/Dashboard/Analytics/CoreWidgetsRow'))
 const PostgresOverview = dynamic(() => import('@components/Dashboard/Analytics/PostgresOverview'))
 const LearnerProgressTable = dynamic(() => import('@components/Dashboard/Analytics/LearnerProgressTable'))
 
-// Advanced widgets — only loaded when user clicks the Advanced tab
+// Advanced widgets: only loaded when user clicks the Advanced tab
 const AdvancedGate = dynamic(() => import('@components/Dashboard/Analytics/AdvancedGate').then(m => ({ default: m.AdvancedGate })))
 const CourseDropoffMap = dynamic(() => import('@components/Dashboard/Analytics/CourseDropoffMap'))
 const CohortRetention = dynamic(() => import('@components/Dashboard/Analytics/CohortRetention'))

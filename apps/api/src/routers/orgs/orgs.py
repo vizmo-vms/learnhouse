@@ -62,12 +62,14 @@ from src.services.orgs.orgs import (
     update_org_landing,
     upload_org_landing_content_service,
     update_org_auth_branding_config,
+    update_org_course_end_config,
     update_org_menu_config,
     update_org_signup_fields_config,
     upload_org_auth_background_service,
     update_org_seo_config,
     upload_org_og_image_service,
     update_org_favicon,
+    update_org_square_logo,
 )
 from src.db.organization_config import AuthBrandingConfig, SeoOrgConfig
 
@@ -410,7 +412,7 @@ async def api_remove_user_from_org(
     "/{org_id}/leave",
     summary="Leave an organization",
     description=(
-        "Remove the CURRENT (authenticated) user's own membership in the org — "
+        "Remove the CURRENT (authenticated) user's own membership in the org; "
         "self-service, no admin rights required. The last remaining admin cannot "
         "leave (they must transfer ownership or delete the org)."
     ),
@@ -915,6 +917,33 @@ async def api_update_org_menu_config(
 
 
 @router.put(
+    "/{org_id}/config/course-end",
+    summary="Update course completion screen config",
+    description="Customize the message and the extra button shown to learners on the course completion screen.",
+    responses={
+        200: {"description": "Course end configuration updated."},
+        400: {"description": "Invalid configuration, such as a button link that is neither an internal path nor an http(s) URL"},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Caller is not an organization administrator"},
+        404: {"description": "Organization not found"},
+    },
+)
+async def api_update_org_course_end_config(
+    request: Request,
+    org_id: int,
+    course_end_config: dict,
+    current_user: PublicUser = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db_session),
+):
+    """
+    Update organization course completion screen configuration (admin-only)
+    """
+    return await update_org_course_end_config(
+        request, course_end_config, org_id, current_user, db_session
+    )
+
+
+@router.put(
     "/{org_id}/config/signup-fields",
     summary="Update custom signup fields",
     description=(
@@ -1367,6 +1396,36 @@ async def api_update_org_favicon(
 
 
 @router.put(
+    "/{org_id}/square_logo",
+    summary="Update organization square logo",
+    description="Upload the square variant of the organization logo, used wherever the brand is shown in a square box (sign-in panel, organization switcher, dashboard sidebar).",
+    responses={
+        200: {"description": "Square logo updated."},
+        401: {"description": "Not authenticated"},
+        403: {"description": "Caller is not an organization administrator"},
+        404: {"description": "Organization not found"},
+    },
+)
+async def api_update_org_square_logo(
+    request: Request,
+    org_id: int,
+    square_logo_file: UploadFile,
+    current_user: PublicUser = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db_session),
+):
+    """
+    Update org square logo
+    """
+    return await update_org_square_logo(
+        request=request,
+        square_logo_file=square_logo_file,
+        org_id=org_id,
+        current_user=current_user,
+        db_session=db_session,
+    )
+
+
+@router.put(
     "/{org_id}/thumbnail",
     summary="Update organization thumbnail",
     description="Upload a new thumbnail image for the organization.",
@@ -1637,7 +1696,7 @@ async def api_get_org_active_users(
     current_user: PublicUser = Depends(get_current_user),
     db_session: AsyncSession = Depends(get_db_session),
 ):
-    # Same tenant guard as /{org_id}/usage — active-user data is org-scoped.
+    # Same tenant guard as /{org_id}/usage: active-user data is org-scoped.
     from src.security.auth import resolve_acting_user_id
     from src.security.org_auth import require_org_membership
     await require_org_membership(

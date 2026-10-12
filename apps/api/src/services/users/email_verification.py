@@ -17,7 +17,6 @@ from src.db.organization_config import OrganizationConfig
 from src.db.organizations import Organization, OrganizationRead
 from src.db.users import User, UserRead
 from config.config import get_learnhouse_config
-from src.services.orgs.orgs import get_org_default_language, resolve_org_sender_name
 from src.services.users.emails import send_email_verification_email
 from src.services.email.utils import (
     get_base_url_from_request,
@@ -56,6 +55,10 @@ def get_redis_connection() -> redis.Redis:
     return r
 
 
+def _normalize_email(email: str | None) -> str:
+    return (email or "").strip().lower()
+
+
 def generate_verification_token() -> str:
     """Generate a secure verification token."""
     return secrets.token_urlsafe(32)
@@ -82,10 +85,9 @@ async def send_verification_email(
     org = None
     org_read = None
     org_uuid = NO_ORG_UUID
-    lang = "en"
     # Stays empty for org-less (platform) signups, so those keep the platform's
-    # own From name rather than borrowing some organization's.
-    sender_name = ""
+    # own From name and mark rather than borrowing some organization's.
+    branding_kwargs: dict = {}
 
     if org_id is not None:
         statement = select(Organization).where(Organization.id == org_id)
@@ -96,13 +98,25 @@ async def send_verification_email(
                 status_code=400,
                 detail="Organization not found",
             )
+
+        # Org branding and the org's host are only for its own members; anyone
+        # else gets the platform mail, so an org cannot mail arbitrary accounts
+        # a link to a host it controls.
+        from src.security.org_auth import get_user_org
+
+        if await get_user_org(user.id, org.id, db_session) is None:
+            org = None
+            org_id = None
+
+    if org is not None:
         org_uuid = org.org_uuid
         org_read = OrganizationRead.model_validate(org)
 
         org_config_stmt = select(OrganizationConfig).where(OrganizationConfig.org_id == org.id)
         org_config = (await db_session.execute(org_config_stmt)).scalars().first()
-        lang = get_org_default_language(org_config)
-        sender_name = resolve_org_sender_name(org_config)
+        from src.services.email.branding import resolve_org_email_branding
+
+        branding_kwargs = resolve_org_email_branding(org, org_config, request).as_kwargs()
 
     # Get Redis connection
     r = get_redis_connection()
@@ -165,8 +179,7 @@ async def send_verification_email(
         organization=org_read,
         email=user.email,
         base_url=base_url,
-        lang=lang,
-        sender_name=sender_name,
+        **branding_kwargs,
     )
 
     if not email_sent:
@@ -240,6 +253,15 @@ async def verify_email_token(
             detail="User not found",
         )
 
+    # A token only proves control of the address it was mailed to. If the
+    # account's email has changed since, it must not verify the new one.
+    if _normalize_email(verification_data.get("email")) != _normalize_email(user.email):
+        r.delete(redis_key)
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid verification token",
+        )
+
     # Check if already verified
     if user.email_verified:
         # Delete token and return success
@@ -257,7 +279,7 @@ async def verify_email_token(
     # Delete used token
     r.delete(redis_key)
 
-    # Dispatch webhook — resolve org_id from org_uuid
+    # Dispatch webhook; resolve org_id from org_uuid
     if org_uuid != NO_ORG_UUID:
         org_statement = select(Organization).where(Organization.org_uuid == org_uuid)
         org = (await db_session.execute(org_statement)).scalars().first()
@@ -318,19 +340,19 @@ async def resend_verification_email(
     return GENERIC_RESPONSE
 
 
-def invalidate_verification_tokens(user_uuid: str, org_uuid: str) -> None:
+def invalidate_verification_tokens(user_uuid: str, org_uuid: str | None = None) -> None:
     """
     Invalidate all verification tokens for a user.
     Called when user changes email or for security reasons.
 
     Args:
         user_uuid: User UUID
-        org_uuid: Organization UUID
+        org_uuid: Organization UUID; None clears the user's tokens for every org
     """
     r = get_redis_connection()
 
     # Find and delete all tokens for this user/org (use scan_iter to avoid blocking Redis)
-    pattern = f"email_verification:{user_uuid}:org:{org_uuid}:token:*"
+    pattern = f"email_verification:{user_uuid}:org:{org_uuid or '*'}:token:*"
     keys = list(r.scan_iter(match=pattern, count=100))
 
     if keys:

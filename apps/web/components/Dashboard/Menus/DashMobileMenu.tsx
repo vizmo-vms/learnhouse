@@ -38,7 +38,7 @@ import { getUriWithOrg, getDeploymentMode } from '@services/config/config'
 import { useTranslation } from 'react-i18next'
 import { changeLanguage } from '@/lib/i18n'
 import { AVAILABLE_LANGUAGES } from '@/lib/languages'
-import { getOrgLogoMediaDirectory } from '@services/media/media'
+import OrgSquareLogo, { hasOrgLogo } from '@components/Objects/Org/OrgSquareLogo'
 import { cn } from '@/lib/utils'
 import { usePlan } from '@components/Hooks/usePlan'
 import { planMeetsRequirement } from '@services/plans/plans'
@@ -93,7 +93,7 @@ function DashMobileMenu() {
           className="flex items-center gap-0.5 px-1.5 py-1.5 bg-[#111113]/90 backdrop-blur-xl rounded-full"
           style={{ boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}
         >
-          {/* LearnHouse logo — links to home */}
+          {/* LearnHouse logo, links to home */}
           <Link
             href="/dash"
             className="flex items-center justify-center px-2.5 py-2.5 rounded-full transition-all duration-200"
@@ -106,7 +106,7 @@ function DashMobileMenu() {
               style={{ filter: 'brightness(0) invert(1)' }}
             />
           </Link>
-          {/* Progressive reveal — more icons as viewport widens */}
+          {/* Progressive reveal: more icons as viewport widens */}
           <PillLink href="/dash/courses" icon={<BookOpen size={18} weight="fill" />} active={isActive('/dash/courses')} className="hidden min-[340px]:flex" />
           <PillLink href="/dash/assignments" icon={<Files size={18} weight="fill" />} active={isActive('/dash/assignments')} className="hidden min-[390px]:flex" />
           <PillLink href="/dash/users/settings/users" icon={<Users size={18} weight="fill" />} active={isActive('/dash/users')} className="hidden min-[430px]:flex" />
@@ -189,12 +189,10 @@ function DashMobileMenu() {
             >
               {/* Org header */}
               <div className="flex items-center gap-3 px-4 py-3.5">
-                {planMeetsRequirement(plan, 'standard') && org?.logo_image ? (
-                  <img
-                    src={getOrgLogoMediaDirectory(org.org_uuid, org.logo_image)}
-                    alt={org?.name}
-                    className="h-7 w-7 object-contain rounded-lg"
-                  />
+                {planMeetsRequirement(plan, 'standard') && hasOrgLogo(org) ? (
+                  <div className="h-7 w-7 rounded-lg overflow-hidden bg-white shrink-0">
+                    <OrgSquareLogo org={org} wideInsetClassName="p-0.5" fallback={null} />
+                  </div>
                 ) : (
                   <div className="h-7 w-7 flex items-center justify-center bg-white/[0.06] rounded-lg">
                     <img src="/lrn-dash.svg" alt="LearnHouse" className="h-4 w-4" style={{ filter: 'brightness(0) invert(1)' }} />

@@ -4,7 +4,7 @@ Why this is evaluated per org-access rather than at login
 ---------------------------------------------------------
 Users can belong to many orgs (``UserOrganization`` is many-to-many). Someone
 who is in Org A (2FA required) and Org B (not) must still be able to sign in
-and use Org B. So the policy cannot be a login-time gate — it is a property of
+and use Org B. So the policy cannot be a login-time gate; it is a property of
 *accessing a particular org*, evaluated per request.
 
 Deliberately NOT enforced by suspending or deleting accounts: a user past their
@@ -21,7 +21,7 @@ from fastapi import HTTPException, status
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from src.db.organization_config import OrganizationConfig
+from src.services.orgs.org_config_lookup import get_session_org_config
 from src.db.user_organizations import UserOrganization
 from src.db.users import User
 from src.services.auth.mfa import is_mfa_active
@@ -64,7 +64,7 @@ def _parse_dt(value: Optional[str]) -> Optional[datetime]:
 
     Dates are persisted as ``str(datetime.now())`` in some tables and ISO-8601
     in others. A value we cannot parse must not be allowed to silently become
-    "no deadline" — callers treat None as "unknown" and fall back to the policy
+    "no deadline"; callers treat None as "unknown" and fall back to the policy
     anchor rather than granting an open-ended grace period.
     """
     if not value:
@@ -84,11 +84,7 @@ def _parse_dt(value: Optional[str]) -> Optional[datetime]:
 
 
 async def get_org_mfa_policy(db_session: AsyncSession, org_id: int) -> OrgMFAPolicy:
-    row = (
-        await db_session.execute(
-            select(OrganizationConfig).where(OrganizationConfig.org_id == org_id)
-        )
-    ).scalars().first()
+    row = await get_session_org_config(db_session, org_id)
     if row is None or not isinstance(row.config, dict):
         return OrgMFAPolicy()
 
@@ -129,7 +125,7 @@ async def evaluate_mfa_compliance(
             exempt_reason="external_auth",
         )
 
-    # Not satisfied — work out whether they are still inside their grace window.
+    # Not satisfied. Work out whether they are still inside their grace window.
     anchor = _parse_dt(policy.enabled_at)
     membership = (
         await db_session.execute(
@@ -141,7 +137,7 @@ async def evaluate_mfa_compliance(
     ).scalars().first()
     joined = _parse_dt(membership.creation_date) if membership else None
 
-    # Later of "policy switched on" and "user joined this org" — see the
+    # Later of "policy switched on" and "user joined this org"; see the
     # SecurityAdminToggle docstring for why the max() is load-bearing.
     candidates = [d for d in (anchor, joined) if d is not None]
     start = max(candidates) if candidates else datetime.now()
@@ -201,7 +197,7 @@ async def is_org_mfa_blocking(db_session: AsyncSession, user_id: int, org_id: in
     except Exception:
         # A policy lookup that errors must not take down ordinary access. The
         # policy is an additional restriction layered on top of RBAC, never the
-        # thing standing between a stranger and the data — RBAC has already run.
+        # thing standing between a stranger and the data; RBAC has already run.
         logger.exception(
             "MFA policy evaluation failed for user %s in org %s; allowing through",
             user_id,

@@ -16,7 +16,7 @@ from src.db.usergroups import UserGroup
 from src.db.users import APITokenUser
 from src.security.rbac import AccessAction, AccessContext
 from src.security.rbac.resource_access import ResourceAccessChecker
-from src.services.courses.activities.activities import _apply_activity_lock
+from src.services.courses.activities.access import apply_activity_lock as _apply_activity_lock
 from src.services.courses.chapters import _apply_locks_to_chapters
 from src.services.courses.courses import (
     create_course,
@@ -286,7 +286,8 @@ async def test_tokens_use_own_management_grants_for_collections_and_locks(
         "courses": {"action_read": True, "action_update": write, "action_delete": False},
     })
     courses = await get_courses_orgslug(mock_request, token, org.slug, db, include_unpublished=True)
-    assert len(courses) == int(write)
+    # Upstream token read grants cover its org's courses independently of groups.
+    assert len(courses) == 1
     chapter.lock_type = "restricted"
     read = ActivityRead.model_validate(activity)
     await _apply_activity_lock(read, activity, course, token, db, parent_chapter=chapter)

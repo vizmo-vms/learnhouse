@@ -26,6 +26,7 @@ import { getActivityWithAuthHeader } from '@services/courses/activities'
 import { useTranslation } from 'react-i18next'
 import CourseCommunitySection from '@components/Objects/Communities/CourseCommunitySection'
 import CourseShare from '@components/Objects/Courses/CourseShare/CourseShare'
+import CourseAccessError from '@components/Objects/Courses/CourseAccessError/CourseAccessError'
 import { JsonLd } from '@components/SEO/JsonLd'
 import { useLHAnalytics, AnalyticsEvent } from '@services/analytics'
 
@@ -68,7 +69,7 @@ const CourseClient = (props: any) => {
     }
   }, [courseId, courseUuidForTracking, track])
 
-  // Fetch trail data — shared cache with useTrail hook used elsewhere
+  // Fetch trail data; shared cache with useTrail hook used elsewhere
   const { data: trailData } = useTrail(org?.id);
 
   // Must be before any early returns (React rules of hooks)
@@ -142,7 +143,7 @@ const CourseClient = (props: any) => {
                     <div className="h-5 bg-gray-200 rounded w-5 flex-shrink-0" />
                     <div className="h-5 bg-gray-200 rounded w-1/3" />
                   </div>
-                  {/* Activity rows — only expand first chapter */}
+                  {/* Activity rows: only expand first chapter */}
                   {chIdx === 0 && Array.from({ length: 3 }).map((_, aIdx) => (
                     <div key={aIdx} className="flex items-center gap-3 px-4 py-4 border-t border-neutral-100">
                       <div className="h-4 w-4 bg-gray-200 rounded flex-shrink-0" />
@@ -167,23 +168,7 @@ const CourseClient = (props: any) => {
 
   // Show error if course fetch failed
   if (!course && activeError) {
-    return (
-      <GeneralWrapperStyled>
-        <div className="flex flex-col items-center justify-center min-h-[50vh] text-center px-4">
-          <h2 className="text-xl font-semibold text-gray-700 mb-2">
-            {t('course.accessDenied', 'Unable to access this course')}
-          </h2>
-          <p className="text-gray-500 mb-4">
-            {activeError?.status === 403
-              ? t('course.noPermission', 'You do not have permission to view this course.')
-              : t('course.loadError', 'This course could not be found or there was an error loading it.')}
-          </p>
-          <Link href={getUriWithOrg(orgslug, '/courses')} className="text-blue-600 hover:underline">
-            {t('course.backToCourses', 'Back to Courses')}
-          </Link>
-        </div>
-      </GeneralWrapperStyled>
-    )
+    return <CourseAccessError error={activeError} orgslug={orgslug} />
   }
 
   function getLearningTags(courseData: any) {

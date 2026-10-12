@@ -180,6 +180,35 @@ class TestStorageClientHelpers:
         assert "config" in call_kwargs
 
 
+class TestWriteFileContent:
+    def test_writes_under_the_content_root_and_reads_back(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "content").mkdir()
+        with patch.object(storage_utils, "get_content_delivery_type", return_value="filesystem"):
+            assert storage_utils.write_file_content("content/a/b/t.vtt", b"WEBVTT") is True
+            assert storage_utils.read_file_content("content/a/b/t.vtt") == b"WEBVTT"
+
+    @pytest.mark.parametrize("path", ["/etc/x", "content/../../x", "outside/x", ""])
+    def test_rejects_paths_outside_the_content_root(self, tmp_path, monkeypatch, path):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "content").mkdir()
+        with patch.object(storage_utils, "get_content_delivery_type", return_value="filesystem"):
+            assert storage_utils.write_file_content(path, b"x") is False
+
+    def test_os_errors_are_reported_not_raised(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "content").mkdir()
+        with patch.object(storage_utils, "get_content_delivery_type", return_value="filesystem"), \
+             patch("builtins.open", side_effect=OSError("disk full")):
+            assert storage_utils.write_file_content("content/t.vtt", b"x") is False
+
+    def test_s3_mode_uploads(self):
+        with patch.object(storage_utils, "get_content_delivery_type", return_value="s3api"), \
+             patch.object(storage_utils, "upload_to_s3", return_value=True) as upload:
+            assert storage_utils.write_file_content("content/t.vtt", b"x") is True
+        upload.assert_called_once_with("content/t.vtt", b"x")
+
+
 class TestFileReadAndExistenceHelpers:
     def test_read_file_content_covers_filesystem_and_s3_fallbacks(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
@@ -381,7 +410,7 @@ class TestDirectoryHelpers:
         assert all("\\" not in root for root, _, _ in walked)
 
         # A trailing slash on the base path must not double up in the roots we
-        # yield — the S3 keys built from them would stop resolving.
+        # yield; the S3 keys built from them would stop resolving.
         with patch.object(
             storage_utils,
             "get_content_delivery_type",
@@ -680,6 +709,30 @@ class TestUploadAndDeleteHelpers:
             "content/course/nested/child.md",
         }
         assert all("\\" not in key for key in uploaded_paths)
+
+    def test_upload_directory_to_s3_parallel_stops_when_asked(self, tmp_path):
+        import threading
+
+        local_dir = tmp_path / "hls"
+        local_dir.mkdir()
+        for i in range(5):
+            (local_dir / f"seg_{i}.ts").write_bytes(b"x")
+
+        stop = threading.Event()
+        stop.set()
+        with patch.object(storage_utils, "is_s3_enabled", return_value=True), \
+             patch.object(storage_utils, "upload_file_to_s3") as upload_mock:
+            assert storage_utils.upload_directory_to_s3_parallel(
+                str(local_dir), "content/hls", stop=stop
+            ) is False
+            upload_mock.assert_not_called()
+
+        with patch.object(storage_utils, "is_s3_enabled", return_value=True), \
+             patch.object(storage_utils, "upload_file_to_s3", return_value=True) as upload_mock:
+            assert storage_utils.upload_directory_to_s3_parallel(
+                str(local_dir), "content/hls", stop=threading.Event()
+            ) is True
+            assert upload_mock.call_count == 5
 
     def test_get_storage_client_returns_cached_client_inside_lock(self):
         """Cover line 48: inner double-check guard inside the lock returns cached client."""
