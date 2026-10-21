@@ -709,6 +709,8 @@ async def are_course_assignments_passed(
     # Assignments that belong to activities actually in this course. Use an
     # IN-subquery (not a join) so an activity reused across chapters isn't
     # double-counted.
+    from src.db.courses.assessment_legacy_completions import AssessmentLegacyCompletion
+
     assignments = (await db_session.execute(
         select(Assignment).where(
             Assignment.course_id == course_id,
@@ -719,6 +721,10 @@ async def are_course_assignments_passed(
             ),
         )
     )).scalars().all()
+    preserved = set((await db_session.execute(select(AssessmentLegacyCompletion.assignment_id).where(
+        AssessmentLegacyCompletion.course_id == course_id,
+        AssessmentLegacyCompletion.user_id == user_id,
+    ))).scalars().all())
 
     if not assignments:
         return True
@@ -746,6 +752,8 @@ async def are_course_assignments_passed(
     sub_by_assignment = {s.assignment_id: s for s in subs}
 
     for assignment in assignments:
+        if assignment.id in preserved:
+            continue
         # A formative (ungraded) assignment has no grade to pass or fail; it is
         # satisfied by handing the work in. Requiring GRADED here would make an
         # ungraded assignment permanently block every certificate in its course,

@@ -75,6 +75,7 @@ from src.services.courses.activities.quiz_modes import (
     score_question,
 )
 from src.services.trail.trail import check_trail_presence
+from src.services.courses.assessment_rollout import preserves_prior_completion
 from src.services.courses.certifications import (
     check_course_completion_and_create_certificate,
     is_course_fully_completed,
@@ -3611,7 +3612,8 @@ async def delete_assignment_submission(
         TrailStep.user_id == user_id,
     )
     trailstep = (await db_session.execute(trailstep_statement)).scalars().first()
-    if trailstep:
+    preserve_completion = await preserves_prior_completion(db_session, assignment.activity_id, user_id)
+    if trailstep and not preserve_completion:
         trailstep.complete = False
         trailstep.teacher_verified = False
         trailstep.grade = ""
@@ -3628,7 +3630,7 @@ async def delete_assignment_submission(
     # new certificate is re-issued automatically once the rework is accepted.
     # revoke_user_certificate emits a certificate_revoked event so consumers
     # learn it's no longer valid.
-    if course.id:
+    if course.id and not preserve_completion:
         await revoke_user_certificate(
             user_id, course.id, db_session, reason="assignment_rejected"
         )
@@ -3781,7 +3783,8 @@ async def retry_assignment_submission(
         TrailStep.user_id == int(current_user.id),
     )
     trailstep = (await db_session.execute(trailstep_statement)).scalars().first()
-    if trailstep:
+    preserve_completion = await preserves_prior_completion(db_session, assignment.activity_id, int(current_user.id))
+    if trailstep and not preserve_completion:
         trailstep.complete = False
         trailstep.teacher_verified = False
         trailstep.grade = ""
@@ -3805,14 +3808,14 @@ async def retry_assignment_submission(
     # Revoke any course certificate previously issued. If this assignment was the
     # final activity, a new certificate is re-issued once the retry attempt is
     # graded and the course is again fully complete. Emits certificate_revoked.
-    if course.id:
+    if course.id and not preserve_completion:
         await revoke_user_certificate(
             int(current_user.id), course.id, db_session, reason="assignment_retried"
         )
 
     # The activity is reset to incomplete for this attempt; demote the
     # enrollment status so a retrying learner isn't still counted as completed.
-    if course.id:
+    if course.id and not preserve_completion:
         await sync_trailrun_status(int(current_user.id), course.id, db_session)
 
     return {

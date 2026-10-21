@@ -21,11 +21,7 @@ import { useTranslation } from 'react-i18next'
 import AIMarkdownRenderer from './AIMarkdownRenderer'
 import AIFollowUpSuggestions from './AIFollowUpSuggestions'
 
-type AIActivityAskProps = {
-  activity: any
-}
-
-function AIActivityAsk(props: AIActivityAskProps) {
+function AIActivityAsk() {
   const { t } = useTranslation()
   const is_ai_feature_enabled = useGetAIFeatures({ feature: 'activity_ask' })
   const [isButtonAvailable, setIsButtonAvailable] = React.useState(false)
@@ -50,7 +46,6 @@ function AIActivityAsk(props: AIActivityAskProps) {
     <>
       {isButtonAvailable && (
         <div>
-          <ActivityChatMessageBox activity={props.activity} />
           <button
             type="button"
             onClick={handleOpenAI}
@@ -71,6 +66,13 @@ function AIActivityAsk(props: AIActivityAskProps) {
       )}
     </>
   )
+}
+
+// Keep the conversation mounted while the page switches between regular and
+// focus layouts. The trigger can appear in either toolbar.
+export function AIActivityChat({ activity }: { activity: any }) {
+  const enabled = useGetAIFeatures({ feature: 'activity_ask' })
+  return enabled ? <ActivityChatMessageBox activity={activity} /> : null
 }
 
 export type AIMessage = {
@@ -697,11 +699,11 @@ const AIChatPredefinedQuestion = (props: {
     <button
       type="button"
       onClick={() => props.sendMessage(getQuestion(props.label))}
-      className="flex space-x-1.5 items-center bg-gray-50 cursor-pointer px-4 py-1.5 rounded-xl border border-gray-200 text-xs font-medium text-gray-700 hover:text-teal-800 hover:bg-teal-50 hover:border-teal-200 transition-colors focus-visible:outline-2 focus-visible:outline-teal-600"
+      className="flex space-x-1.5 items-center bg-teal-50 cursor-pointer px-4 py-1.5 rounded-xl border border-teal-200 text-xs font-medium text-teal-800 hover:bg-teal-100 transition-colors focus-visible:outline-2 focus-visible:outline-teal-600"
     >
       {props.label === 'about' && <BadgeInfo size={15} />}
       {props.label === 'flashcards' && <NotebookTabs size={15} />}
-      {props.label === 'examples' && <div className="text-gray-600">Ex</div>}
+      {props.label === 'examples' && <div>Ex</div>}
       <span>{getQuestion(props.label)}</span>
     </button>
   )

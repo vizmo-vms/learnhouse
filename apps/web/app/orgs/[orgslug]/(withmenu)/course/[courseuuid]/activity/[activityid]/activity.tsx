@@ -58,6 +58,7 @@ const AssignmentStudentActivity = lazy(() => import('@components/Objects/Activit
 // gating render on the lazy chunk would flash the wrong control.
 import { isAssignmentPastDue } from '@components/Objects/Activities/Assignment/AssignmentStudentActivity'
 const AIActivityAsk = lazy(() => import('@components/Objects/Activities/AI/AIActivityAsk'))
+const AIActivityChat = lazy(() => import('@components/Objects/Activities/AI/AIActivityAsk').then(mod => ({ default: mod.AIActivityChat })))
 const AISidePanelContentWrapper = lazy(() => import('@components/Objects/Activities/AI/AIActivityAsk').then(mod => ({ default: mod.AISidePanelContentWrapper })))
 const AISidePanelInline = lazy(() => import('@components/Objects/Activities/AI/AIActivityAsk').then(mod => ({ default: mod.AISidePanelInline })))
 const AIChatBotProvider = lazy(() => import('@components/Contexts/AI/AIChatBotContext'))
@@ -358,6 +359,11 @@ function ActivityClient(props: ActivityClientProps) {
             <AssignmentSubmissionProvider assignment_uuid={assignment?.assignment_uuid}>
               <AssignmentProvider assignment_uuid={assignment?.assignment_uuid}>
                 <AssignmentsTaskProvider>
+                  {activity.extra_metadata?.assessment_rollout && (
+                    <p role="status" className="mb-4 rounded-lg border border-teal-200 bg-teal-50 p-4 text-sm text-teal-900">
+                      Course completions and certificates earned before assessments were introduced remain valid. New assessment grades are recorded separately.
+                    </p>
+                  )}
                   <AssignmentStudentActivity />
                 </AssignmentsTaskProvider>
               </AssignmentProvider>
@@ -397,9 +403,9 @@ function ActivityClient(props: ActivityClientProps) {
   React.useEffect(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('globalFocusMode');
-      setIsFocusMode(saved === 'true');
+      setIsFocusMode(activityid !== 'end' && saved === 'true');
     }
-  }, []);
+  }, [activityid]);
 
   // Save focus mode to localStorage
   React.useEffect(() => {
@@ -553,7 +559,12 @@ function ActivityClient(props: ActivityClientProps) {
           <AIChatBotProvider>
             <Suspense fallback={null}>
               <AISidePanelContentWrapper>
-            {isFocusMode ? (
+            {activity && activity.published && activity.content.paid_access != false && activity.activity_type !== 'TYPE_ASSIGNMENT' && activityid !== 'end' && (
+              <AuthenticatedClientElement checkMethod="authentication">
+                <AIActivityChat activity={activity} />
+              </AuthenticatedClientElement>
+            )}
+            {isFocusMode && activityid !== 'end' ? (
               <AnimatePresence>
                 <motion.div
                   initial={isInitialRender.current ? false : { opacity: 0 }}
@@ -654,6 +665,11 @@ function ActivityClient(props: ActivityClientProps) {
                           transition={{ delay: 0.2 }}
                           className="flex items-center space-x-2"
                         >
+                          {activity && activity.published && activity.content.paid_access != false && activity.activity_type !== 'TYPE_ASSIGNMENT' && (
+                            <AuthenticatedClientElement checkMethod="authentication">
+                              <AIActivityAsk />
+                            </AuthenticatedClientElement>
+                          )}
                           {activity && (
                             <div className="hidden sm:block">
                               <ActivityShareDropdown
@@ -694,17 +710,20 @@ function ActivityClient(props: ActivityClientProps) {
                           {activity.content.paid_access == false ? (
                             <PaidCourseActivityDisclaimer course={course} />
                           ) : (
+                            <div className="flex gap-6 items-start">
                             <motion.div
                               initial={isInitialRender.current ? false : { scale: 0.95, opacity: 0 }}
                               animate={{ scale: 1, opacity: 1 }}
                               transition={{ delay: 0.3 }}
-                              className={`${activity.activity_type === 'TYPE_SCORM' ? 'rounded-xl overflow-hidden' : 'p-7 rounded-lg'} ${bgColor} mt-4`}
+                              className={`flex-1 min-w-0 ${activity.activity_type === 'TYPE_SCORM' ? 'rounded-xl overflow-hidden' : 'p-7 rounded-lg'} ${bgColor} mt-4`}
                             >
                               {/* Activity Types */}
                               <div className={activity.activity_type === 'TYPE_SCORM' ? 'overflow-hidden' : ''}>
                                 {activityContent}
                               </div>
                             </motion.div>
+                            <AISidePanelInline activity={activity} />
+                            </div>
                           )}
                         </>
                       )}
@@ -950,7 +969,7 @@ function ActivityClient(props: ActivityClientProps) {
                               <AuthenticatedClientElement checkMethod="authentication">
                                 {activity.activity_type != 'TYPE_ASSIGNMENT' && (
                                   <>
-                                    <AIActivityAsk activity={activity} />
+                                    <AIActivityAsk />
                                     <ActivityChapterDropdown
                                       course={course}
                                       currentActivityId={activity.activity_uuid ? activity.activity_uuid.replace('activity_', '') : activityid.replace('activity_', '')}

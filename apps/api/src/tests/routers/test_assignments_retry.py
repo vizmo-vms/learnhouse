@@ -223,6 +223,36 @@ async def _make_certificate(db, course, user_id):
 
 
 class TestRetryAssignmentSubmissionService:
+    @pytest.mark.parametrize("operation", ["retry", "reject", "regrade"])
+    async def test_prior_completion_survives_optional_assessment_changes(
+        self, db, regular_user, admin_user, mock_request, org, course, activity, assignment, assignment_task, operation,
+    ):
+        from src.db.courses.assessment_legacy_completions import AssessmentLegacyCompletion
+        from src.db.trail_runs import StatusEnum
+        from src.services.courses.activities.assignments import delete_assignment_submission, grade_assignment_submission
+
+        await _make_user_submission(db, assignment.id, regular_user.id)
+        await _make_task_submission(db, assignment_task, regular_user.id)
+        _, run, step = await _make_trail_artifacts(db, org.id, course.id, activity.id, regular_user.id)
+        _, certificate = await _make_certificate(db, course, regular_user.id)
+        run.status = StatusEnum.STATUS_COMPLETED
+        db.add(run)
+        db.add(AssessmentLegacyCompletion(assignment_id=assignment.id, activity_id=activity.id, user_id=regular_user.id, org_id=org.id, course_id=course.id, preserved_at="2026-10-21T00:00:00Z"))
+        await db.commit()
+        with patch("src.services.courses.activities.assignments.check_resource_access", new_callable=AsyncMock), patch("src.services.courses.activities.assignments.authorize_assignment_access", new_callable=AsyncMock), patch("src.services.courses.activities.assignments.dispatch_webhooks", new_callable=AsyncMock):
+            if operation == "retry":
+                await retry_assignment_submission(mock_request, assignment.assignment_uuid, regular_user, db)
+            elif operation == "reject":
+                await delete_assignment_submission(mock_request, regular_user.id, assignment.assignment_uuid, admin_user, db)
+            else:
+                result = await grade_assignment_submission(mock_request, regular_user.id, assignment.assignment_uuid, admin_user, db)
+                assert result["passed"] is False
+        await db.refresh(step)
+        await db.refresh(run)
+        assert step.complete
+        assert run.status == StatusEnum.STATUS_COMPLETED
+        assert (await db.execute(select(CertificateUser).where(CertificateUser.id == certificate.id))).scalars().one().user_certification_uuid == "certuser_retry"
+
     async def test_retry_success_resets_submission_tasks_and_trailstep(
         self, db, regular_user, mock_request, org, course, activity, assignment, assignment_task
     ):
