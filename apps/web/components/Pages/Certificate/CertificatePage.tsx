@@ -9,6 +9,7 @@ import CertificatePreview from '@components/Dashboard/Pages/Course/EditCourseCer
 import { ArrowLeft, Download, Share2, Copy, Check } from 'lucide-react';
 import Link from 'next/link';
 import { getUriWithOrg } from '@services/config/config';
+import { parseApiDate } from '@lib/format';
 import { useLHAnalytics, useTrackView, AnalyticsEvent } from '@services/analytics';
 import {
   CERTIFICATE_CAPTURE_WIDTH,
@@ -101,7 +102,7 @@ const CertificatePage: React.FC<CertificatePageProps> = ({ orgslug, courseid, qr
       certificateInstructor: config.certificate_instructor,
       certificateId: userCertificate.certificate_user.user_certification_uuid,
       learnerName,
-      awardedDate: new Date(userCertificate.certificate_user.created_at).toLocaleDateString('en-US', {
+      awardedDate: parseApiDate(userCertificate.certificate_user.created_at).toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'long',
         day: 'numeric',
@@ -143,7 +144,7 @@ const CertificatePage: React.FC<CertificatePageProps> = ({ orgslug, courseid, qr
     if (!userCertificate) return;
 
     const config = userCertificate.certification.config;
-    const awardedAt = new Date(userCertificate.certificate_user.created_at);
+    const awardedAt = parseApiDate(userCertificate.certificate_user.created_at);
 
     const params = new URLSearchParams({
       startTask: 'CERTIFICATION_NAME',
@@ -312,4 +313,4 @@ const CertificatePage: React.FC<CertificatePageProps> = ({ orgslug, courseid, qr
   );
 };
 
-export default CertificatePage; 
+export default CertificatePage;

@@ -20,6 +20,16 @@ type ProgressRow = {
   progress_pct: number
   enrolled_at: string | null
   last_activity_at: string | null
+  assessments: {
+    assignment_uuid: string
+    title: string
+    submission_status: string
+    percentage: number | null
+    passed: boolean | null
+    attempt_number: number
+    updated_at: string | null
+    previous_completion_preserved: boolean
+  }[]
 }
 
 type ProgressReport = {
@@ -61,7 +71,7 @@ export default function LearnerProgressTable({ courseUUID }: { courseUUID?: stri
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 id={`${id}-heading`} className="text-base font-semibold text-gray-900">Employee course progress</h2>
-          <p className="mt-1 text-sm text-gray-500">See who has enrolled, what they have completed and who has yet to start.</p>
+          <p className="mt-1 text-sm text-gray-500">Track course progress and assessment grades. Scores show each employee’s latest attempt.</p>
         </div>
         <button type="button" disabled={isFetching} onClick={() => refetch()}
           className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50">
@@ -109,7 +119,7 @@ export default function LearnerProgressTable({ courseUUID }: { courseUUID?: stri
                 <caption className="sr-only">Employee enrollments and progress{courseUUID ? ' for this course' : ' across courses'}</caption>
                 <thead>
                   <tr className="border-b border-gray-100 text-left text-xs text-gray-500">
-                    {['Employee', 'Course', 'Status', 'Progress', 'Enrolled', 'Last activity'].map((heading) => (
+                    {['Employee', 'Course', 'Status', 'Progress', 'Assessments', 'Enrolled', 'Last activity'].map((heading) => (
                       <th key={heading} scope="col" className="pb-3 pr-4 font-medium whitespace-nowrap">{heading}</th>
                     ))}
                   </tr>
@@ -133,6 +143,24 @@ export default function LearnerProgressTable({ courseUUID }: { courseUUID?: stri
                             <div className="flex justify-between gap-3 text-xs"><span>{row.activities_completed} / {row.activities_total} lessons</span><strong>{row.progress_pct}%</strong></div>
                             <progress aria-label={`${name}: ${row.course_name} progress`} value={row.progress_pct} max={100} className="mt-2 h-1.5 w-full accent-blue-600" />
                           </> : <span className="text-gray-400">—</span>}
+                        </td>
+                        <td className="py-4 pr-4 min-w-56">
+                          {row.assessments?.length ? <ul className="space-y-3">
+                            {row.assessments.map((assessment) => (
+                              <li key={assessment.assignment_uuid}>
+                                <Link className="text-xs font-medium text-gray-900 hover:underline" href={`/dash/assignments/${assessment.assignment_uuid}`}>{assessment.title}</Link>
+                                <div className="mt-1 flex items-center gap-2 text-xs">
+                                  {assessment.percentage !== null && <strong>{assessment.percentage}%</strong>}
+                                  <span className={assessment.passed === true ? 'text-teal-800' : assessment.passed === false ? 'text-red-700' : 'text-gray-500'}>
+                                    {assessment.passed === true ? 'Passed' : assessment.passed === false ? 'Failed' : assessment.submission_status === 'NOT_STARTED' ? 'Not started' : assessment.submission_status === 'PENDING' ? 'In progress' : assessment.submission_status === 'GRADED' ? 'No graded points' : 'Submitted'}
+                                  </span>
+                                  {assessment.attempt_number > 0 && <span className="text-gray-500">Attempt {assessment.attempt_number}</span>}
+                                </div>
+                                {assessment.updated_at && <div className="mt-1 text-xs text-gray-500">{date(assessment.updated_at, true)}</div>}
+                                {assessment.previous_completion_preserved && <div className="mt-1 text-xs text-gray-500">Earlier course completion preserved</div>}
+                              </li>
+                            ))}
+                          </ul> : <span className="text-xs text-gray-500">No published assessment</span>}
                         </td>
                         <td className="py-4 pr-4 whitespace-nowrap text-xs text-gray-500">{date(row.enrolled_at)}</td>
                         <td className="py-4 whitespace-nowrap text-xs text-gray-500">{date(row.last_activity_at, true)}</td>

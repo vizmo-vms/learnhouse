@@ -19,6 +19,7 @@ import {
 } from '@services/courses/certificateDownload';
 import { useTranslation } from 'react-i18next';
 import { getCourseEndConfig, resolveCourseEndButton } from './courseEndConfig';
+import { parseApiDate } from '@lib/format';
 
 interface CourseEndViewProps {
   courseName: string;
@@ -201,7 +202,7 @@ const CourseEndView: React.FC<CourseEndViewProps> = ({
       certificateInstructor: config.certificate_instructor,
       certificateId: userCertificate.certificate_user.user_certification_uuid,
       learnerName,
-      awardedDate: new Date(userCertificate.certificate_user.created_at).toLocaleDateString(
+      awardedDate: parseApiDate(userCertificate.certificate_user.created_at).toLocaleDateString(
         i18n.language === 'fr' ? 'fr-FR' : 'en-US',
         { year: 'numeric', month: 'long', day: 'numeric' },
       ),
@@ -460,4 +461,4 @@ const CourseEndView: React.FC<CourseEndViewProps> = ({
   }
 };
 
-export default CourseEndView; 
+export default CourseEndView;

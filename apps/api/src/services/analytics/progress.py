@@ -1,6 +1,6 @@
 """Read-only learning progress from PostgreSQL; no event service required."""
 
-from sqlalchemy import String, case, cast, func
+from sqlalchemy import String, case, cast, func, tuple_
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -11,6 +11,69 @@ from src.db.trail_runs import StatusEnum, TrailRun
 from src.db.trail_steps import TrailStep
 from src.db.user_organizations import UserOrganization
 from src.db.users import User
+from src.db.courses.assessment_legacy_completions import AssessmentLegacyCompletion
+
+
+async def assessment_results(db: AsyncSession, org_id: int, rows) -> dict:
+    """Latest assessment attempts for this report page; never expose answer keys."""
+    from src.db.courses.assignments import (
+        Assignment, AssignmentTask, AssignmentUserSubmission,
+        AssignmentUserSubmissionStatus,
+    )
+    from src.services.courses.activities.assignments import compute_assignment_grade
+
+    pairs = {(row["user_id"], row["course_id"]) for row in rows if row["course_id"] is not None}
+    if not pairs:
+        return {}
+    max_grades = (
+        select(AssignmentTask.assignment_id, func.sum(AssignmentTask.max_grade_value).label("max_grade"))
+        .where(AssignmentTask.org_id == org_id)
+        .group_by(AssignmentTask.assignment_id).subquery()
+    )
+    results = (await db.execute(
+        select(TrailRun.user_id, Assignment, AssessmentLegacyCompletion.user_id, AssignmentUserSubmission, max_grades.c.max_grade)
+        .select_from(TrailRun)
+        .join(Assignment, (Assignment.course_id == TrailRun.course_id) & (Assignment.org_id == org_id))
+        .join(Activity, (Activity.id == Assignment.activity_id) & (Activity.org_id == org_id))
+        .outerjoin(AssignmentUserSubmission,
+                   (AssignmentUserSubmission.assignment_id == Assignment.id)
+                   & (AssignmentUserSubmission.user_id == TrailRun.user_id))
+        .outerjoin(max_grades, max_grades.c.assignment_id == Assignment.id)
+        .outerjoin(AssessmentLegacyCompletion,
+                   (AssessmentLegacyCompletion.assignment_id == Assignment.id)
+                   & (AssessmentLegacyCompletion.user_id == TrailRun.user_id)
+                   & (AssessmentLegacyCompletion.org_id == org_id))
+        .where(
+            TrailRun.org_id == org_id,
+            tuple_(TrailRun.user_id, TrailRun.course_id).in_(sorted(pairs)),
+            Assignment.published == True,
+            Activity.published == True,
+            Activity.id.in_(select(ChapterActivity.activity_id).where(
+                ChapterActivity.course_id == Assignment.course_id,
+                ChapterActivity.org_id == org_id,
+            )),
+        )
+        .order_by(Assignment.id)
+    )).all()
+    by_enrollment = {}
+    for user_id, assignment, preserved_user_id, submission, max_grade in results:
+        status = submission.submission_status if submission else None
+        graded = status == AssignmentUserSubmissionStatus.GRADED and not assignment.ungraded and (max_grade or 0) > 0
+        grade = compute_assignment_grade(
+            submission.grade, max_grade, assignment.grading_type,
+            pass_threshold_percentage=assignment.pass_threshold_percentage,
+        ) if graded else None
+        by_enrollment.setdefault((user_id, assignment.course_id), []).append({
+            "assignment_uuid": assignment.assignment_uuid,
+            "title": assignment.title,
+            "submission_status": getattr(status, "value", status) or "NOT_STARTED",
+            "percentage": grade["percentage"] if grade else None,
+            "passed": grade["passed"] if grade else None,
+            "attempt_number": submission.attempt_number if submission else 0,
+            "updated_at": submission.update_date if submission else None,
+            "previous_completion_preserved": preserved_user_id is not None,
+        })
+    return by_enrollment
 
 
 def published_activities(org_id: int):
@@ -211,8 +274,9 @@ async def learner_progress(
         .mappings()
         .all()
     )
+    assessments = await assessment_results(db, org_id, rows)
     return {
-        "data": [progress_row(row) for row in rows],
+        "data": [dict(progress_row(row), assessments=assessments.get((row["user_id"], row["course_id"]), [])) for row in rows],
         "summary": summary,
         "total": summary["total"],
         "page": page,
