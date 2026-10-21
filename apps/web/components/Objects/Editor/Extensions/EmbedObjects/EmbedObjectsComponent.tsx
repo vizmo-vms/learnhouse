@@ -39,7 +39,7 @@ const getYouTubeEmbedUrl = (url: string): string => {
     if (match && match[1]) {
       const videoId = match[1];
       if (videoId.length === 11) {
-        return `https://www.youtube.com/embed/${videoId}?autoplay=0&rel=0`;
+        return `https://www.youtube.com/embed/${videoId}?autoplay=0&rel=0&enablejsapi=1`;
       }
     }
 

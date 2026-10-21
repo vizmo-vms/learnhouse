@@ -101,6 +101,7 @@ function EditorPreview({ content, activity }: EditorPreviewProps) {
         activity: activity,
       }),
       Youtube.configure({
+        enableIFrameApi: true,
         controls: true,
         modestBranding: true,
       }),

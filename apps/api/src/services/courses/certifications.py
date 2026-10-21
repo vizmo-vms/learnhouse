@@ -832,6 +832,11 @@ async def check_course_completion_and_create_certificate(
     await sync_trailrun_status(user_id, course_id, db_session, is_complete=is_complete)
 
     if is_complete:
+        from src.services.courses.study_time import finish_study_time
+
+        assignments_passed = await are_course_assignments_passed(user_id, course_id, db_session)
+        if assignments_passed:
+            await finish_study_time(user_id, course_id, db_session)
         # All activities completed, check if certification exists for this course
         statement = select(Certifications).where(Certifications.course_id == course_id)
         certification = (await db_session.execute(statement)).scalars().first()
@@ -841,7 +846,7 @@ async def check_course_completion_and_create_certificate(
             # every graded assignment in the course must be passed. This withholds
             # the certificate from learners who finished all activities but failed
             # (or haven't yet been graded on) a required assessment.
-            if not await are_course_assignments_passed(user_id, course_id, db_session):
+            if not assignments_passed:
                 return False
             # SECURITY: Create certificate user link (system operation, no RBAC needed here)
             # This is called from mark_activity_as_done_for_user which already has proper RBAC checks
