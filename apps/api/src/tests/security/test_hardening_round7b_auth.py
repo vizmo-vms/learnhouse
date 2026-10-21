@@ -844,4 +844,3 @@ class TestGoogleClaimDropsSsoLinks:
         ):
             await signWithGoogle(Mock(), "t", "owner@test.com", None, Mock(), db_session)
         hook.assert_not_awaited()
-

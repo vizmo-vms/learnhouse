@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic'
 
 export default function NotFound() {
   return (
-    <div className="flex min-h-screen w-full flex-col items-center justify-center 
+    <div className="flex min-h-screen w-full flex-col items-center justify-center
    bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-zinc-200 to-slate-300">
     {/* The nx-* classes here were left over from a Nextra template and never
         existed in this project's Tailwind build, so they rendered nothing.
@@ -44,4 +44,3 @@ export default function NotFound() {
     </div>
   )
 }
-
