@@ -78,6 +78,7 @@ function VideoActivity({ activity, course, orgUuid }: VideoActivityProps) {
   const [videoEl, setVideoEl] = React.useState<HTMLVideoElement | null>(null)
   const chapters = React.useMemo(() => resolveActivityChapters(activity), [activity])
   const resolvedOrgUuid = orgUuid || org?.org_uuid
+  const [youtubePlaying, setYoutubePlaying] = React.useState(false)
   const [videoId, setVideoId] = React.useState('')
   // `?t=<seconds>` opens the video at a moment, e.g. from a copilot citation.
   // The player reads its start time when it initializes on the client; no
@@ -216,7 +217,7 @@ function VideoActivity({ activity, course, orgUuid }: VideoActivityProps) {
           )}
           {activity.activity_sub_type === 'SUBTYPE_VIDEO_YOUTUBE' && (
             <div className="w-full">
-              <div className="relative w-full aspect-video overflow-hidden rounded-[20px] ring-1 ring-white/10">
+              <div data-study-video-playing={youtubePlaying} className="relative w-full aspect-video overflow-hidden rounded-[20px] ring-1 ring-white/10">
                 <YouTube
                   className="w-full h-full"
                   opts={{
@@ -233,6 +234,7 @@ function VideoActivity({ activity, course, orgUuid }: VideoActivityProps) {
                     },
                   }}
                   videoId={videoId}
+                  onStateChange={(event) => setYoutubePlaying(event.data === 1)}
                   onReady={(event) => {
                     if (activity.details?.startTime) {
                       event.target.seekTo(activity.details.startTime, true)

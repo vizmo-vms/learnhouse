@@ -7,6 +7,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from src.db.courses.activities import Activity
 from src.db.courses.chapter_activities import ChapterActivity
 from src.db.courses.courses import Course
+from src.db.courses.study_time import CourseStudyTime
 from src.db.trail_runs import StatusEnum, TrailRun
 from src.db.trail_steps import TrailStep
 from src.db.user_organizations import UserOrganization
@@ -139,6 +140,9 @@ def enrollment_progress(org_id: int):
             total.label("activities_total"),
             case((total > 0, 100.0 * done / total), else_=0.0).label("progress_pct"),
             steps.c.last_activity_at,
+            case((CourseStudyTime.first_seen_at.is_not(None), CourseStudyTime.active_ms / 1000.0)).label("active_seconds"),
+            CourseStudyTime.partially_tracked,
+            CourseStudyTime.completed_at.label("study_completed_at"),
         )
         .join(Course, (Course.id == TrailRun.course_id) & (Course.org_id == org_id))
         .join(
@@ -146,6 +150,10 @@ def enrollment_progress(org_id: int):
             (UserOrganization.user_id == TrailRun.user_id)
             & (UserOrganization.org_id == org_id),
         )
+        .outerjoin(CourseStudyTime,
+                   (CourseStudyTime.user_id == TrailRun.user_id)
+                   & (CourseStudyTime.course_id == TrailRun.course_id)
+                   & (CourseStudyTime.org_id == org_id))
         .outerjoin(totals, totals.c.course_id == Course.id)
         .outerjoin(steps, steps.c.trailrun_id == TrailRun.id)
         .where(TrailRun.org_id == org_id)
@@ -155,6 +163,8 @@ def enrollment_progress(org_id: int):
 def progress_row(row) -> dict:
     result = dict(row)
     result["progress_pct"] = round(float(result["progress_pct"] or 0), 1)
+    result["active_seconds"] = round(float(result["active_seconds"]), 3) if result.get("active_seconds") is not None else None
+    result["partially_tracked"] = bool(result.get("partially_tracked"))
     result["status"] = getattr(result["status"], "value", result["status"])
     return result
 
@@ -193,6 +203,9 @@ async def learner_progress(
             func.coalesce(e.c.activities_total, 0).label("activities_total"),
             func.coalesce(e.c.progress_pct, 0).label("progress_pct"),
             e.c.last_activity_at,
+            e.c.active_seconds,
+            e.c.partially_tracked,
+            e.c.study_completed_at,
         )
         .join(
             UserOrganization,

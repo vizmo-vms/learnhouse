@@ -358,3 +358,29 @@ async def test_invalid_question_bank_blocks_all_conversion(db, course, activity)
     with pytest.raises(ValueError, match="Invalid assessment question"):
         await convert(db, 1, {course.name: invalid}, 1, apply=True)
     assert not (await db.execute(select(Assignment))).scalars().all()
+
+
+async def test_study_time_report_distinguishes_unknown_partial_and_completed(client, db, progress, regular_user):
+    from datetime import datetime, timezone
+    from src.db.courses.study_time import CourseStudyTime
+
+    async def learner():
+        report = (await client.get("/analytics/dashboard/db/learner_progress?org_id=1")).json()
+        return next(row for row in report["data"] if row["user_id"] == regular_user.id)
+
+    assert (await learner())["active_seconds"] is None
+    row = CourseStudyTime(user_id=regular_user.id, course_id=1, org_id=1, partially_tracked=True)
+    db.add(row)
+    await db.commit()
+    assert (await learner())["active_seconds"] is None
+    row.first_seen_at = datetime.now(timezone.utc)
+    row.active_ms = 75123
+    db.add(row)
+    await db.commit()
+    measured = await learner()
+    assert measured["active_seconds"] == 75.123 and measured["partially_tracked"] is True
+    assert measured["study_completed_at"] is None
+    row.completed_at = datetime.now(timezone.utc)
+    db.add(row)
+    await db.commit()
+    assert (await learner())["study_completed_at"] is not None

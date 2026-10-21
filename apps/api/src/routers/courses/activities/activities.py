@@ -1,7 +1,8 @@
 from typing import List, Optional
 import json
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, Form, Request, Query
-from pydantic import BaseModel
+from uuid import UUID
+from pydantic import BaseModel, Field
 from src.db.courses.activities import ActivityCreate, ActivityRead, ActivityUpdate
 from src.db.courses.activity_versions import ActivityVersionRead, ActivityStateRead
 from src.db.users import PublicUser
@@ -46,6 +47,28 @@ from src.services.courses.lock_usergroups import (
 )
 
 router = APIRouter()
+
+
+class StudyTimeHeartbeat(BaseModel):
+    session_id: UUID
+    total_ms: int = Field(strict=True, ge=0, le=2**53 - 1)
+    partial: bool = Field(default=False, strict=True)
+
+
+@router.post("/{activity_uuid}/study-time", summary="Record own active learning time")
+async def api_record_study_time(
+    request: Request,
+    activity_uuid: str,
+    heartbeat: StudyTimeHeartbeat,
+    current_user: PublicUser = Depends(get_current_user),
+    db_session=Depends(get_db_session),
+):
+    from src.services.courses.study_time import record_study_time
+
+    return await record_study_time(
+        request, activity_uuid, current_user, db_session,
+        str(heartbeat.session_id), heartbeat.total_ms, partial=heartbeat.partial,
+    )
 
 
 class ExternalVideoUpdateBody(BaseModel):

@@ -1,4 +1,5 @@
 'use client'
+import { useActiveStudyTime } from '@/hooks/useActiveStudyTime'
 import Link from 'next/link'
 import { getUriWithOrg } from '@services/config/config'
 import { BookOpenCheck, CheckCircle, ChevronLeft, ChevronRight, MessageSquare, UserRoundPen, Edit2, Loader2, Maximize2, Minimize2, Trophy, Sparkles, XCircle, Lock, RotateCcw, Infinity as InfinityIcon } from 'lucide-react'
@@ -253,6 +254,7 @@ function ActivityClient(props: ActivityClientProps) {
   const { data: course, isLoading: courseLoading, error: courseError } = useCourseMeta(courseuuid)
   const { data: activity, isLoading: activityLoading } = useActivity(activityid)
   const session = useLHSession() as any;
+  useActiveStudyTime(activity?.activity_uuid, Boolean(session?.data?.user?.id && activity?.published && course?.published), session?.data?.tokens?.access_token)
   const pathname = usePathname()
   const access_token = session?.data?.tokens?.access_token;
   const [bgColor, setBgColor] = React.useState('bg-white nice-shadow')

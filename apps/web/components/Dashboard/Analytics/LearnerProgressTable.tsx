@@ -3,6 +3,7 @@
 import React, { useId, useState } from 'react'
 import Link from 'next/link'
 import { useAnalyticsDbQuery } from './useAnalyticsDashboard'
+import { formatStudyTime } from '@lib/studyTime'
 import { parseApiDate } from '@lib/format'
 
 type ProgressRow = {
@@ -20,6 +21,9 @@ type ProgressRow = {
   progress_pct: number
   enrolled_at: string | null
   last_activity_at: string | null
+  active_seconds: number | null
+  partially_tracked: boolean
+  study_completed_at: string | null
   assessments: {
     assignment_uuid: string
     title: string
@@ -71,7 +75,7 @@ export default function LearnerProgressTable({ courseUUID }: { courseUUID?: stri
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 id={`${id}-heading`} className="text-base font-semibold text-gray-900">Employee course progress</h2>
-          <p className="mt-1 text-sm text-gray-500">Track course progress and assessment grades. Scores show each employee’s latest attempt.</p>
+          <p className="mt-1 text-sm text-gray-500">Track course progress, active learning time and assessment grades. Scores show each employee’s latest attempt.</p>
         </div>
         <button type="button" disabled={isFetching} onClick={() => refetch()}
           className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50">
@@ -79,6 +83,7 @@ export default function LearnerProgressTable({ courseUUID }: { courseUUID?: stri
         </button>
       </div>
 
+      <p className="mt-2 max-w-4xl text-xs text-gray-500">Active time includes lessons and assessments, pauses in hidden tabs or after five idle minutes, and counts visible video playback. It stops at the first completion with passing assessments. Earlier learning and interaction inside PDF viewers or external embeds may be untracked. Those durations are marked partially tracked; this is an activity estimate.</p>
       <form className="mt-5 flex flex-wrap items-end gap-3" onSubmit={(event) => {
         event.preventDefault(); setSearch(searchInput.trim()); setPage(1)
       }}>
@@ -119,7 +124,7 @@ export default function LearnerProgressTable({ courseUUID }: { courseUUID?: stri
                 <caption className="sr-only">Employee enrollments and progress{courseUUID ? ' for this course' : ' across courses'}</caption>
                 <thead>
                   <tr className="border-b border-gray-100 text-left text-xs text-gray-500">
-                    {['Employee', 'Course', 'Status', 'Progress', 'Assessments', 'Enrolled', 'Last activity'].map((heading) => (
+                    {['Employee', 'Course', 'Status', 'Progress', 'Assessments', 'Active time', 'Enrolled', 'Last activity'].map((heading) => (
                       <th key={heading} scope="col" className="pb-3 pr-4 font-medium whitespace-nowrap">{heading}</th>
                     ))}
                   </tr>
@@ -161,6 +166,10 @@ export default function LearnerProgressTable({ courseUUID }: { courseUUID?: stri
                               </li>
                             ))}
                           </ul> : <span className="text-xs text-gray-500">No published assessment</span>}
+                        </td>
+                        <td className="py-4 pr-4 whitespace-nowrap">
+                          <div className="font-medium text-gray-800">{formatStudyTime(row.active_seconds)}</div>
+                          {row.active_seconds != null && <div className="mt-1 text-xs text-gray-500">{row.partially_tracked ? (row.study_completed_at ? 'At completion · Partially tracked' : 'So far · Partially tracked') : row.study_completed_at ? 'At completion' : 'So far'}</div>}
                         </td>
                         <td className="py-4 pr-4 whitespace-nowrap text-xs text-gray-500">{date(row.enrolled_at)}</td>
                         <td className="py-4 whitespace-nowrap text-xs text-gray-500">{date(row.last_activity_at, true)}</td>
