@@ -174,7 +174,8 @@ async def convert(db, org_id, drafts, expected_count, apply=False):
         # Remove obsolete search snippets; the normal scheduler rebuilds them
         # from the assessment extractor's allowlist (never answer keys).
         await db.execute(delete(CourseEmbedding).where(CourseEmbedding.activity_id == activity.id))
-        course.description = re.sub(r"\bquiz\b", "assessment", course.description or "", flags=re.I)
+        description = re.sub(r"\ba quiz\b", "an assessment", course.description or "", flags=re.I)
+        course.description = re.sub(r"\bquiz\b", "assessment", description, flags=re.I)
         db.add(course)
     await db.flush()
     return dict(summary, preserved_completions=preserved, reset_ungraded_checks=reset)

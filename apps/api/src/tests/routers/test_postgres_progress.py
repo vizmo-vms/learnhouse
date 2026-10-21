@@ -305,6 +305,8 @@ async def test_conversion_preserves_history_and_previous_completions(
     from src.db.courses.activity_versions import ActivityVersion
 
     original = {"type": "doc", "content": [{"type": "blockQuiz", "attrs": {"questions": quiz_questions()}}]}
+    course.description = "Eight lessons and a quiz."
+    db.add(course)
     activity.content = original
     if already_complete:
         progress.status = StatusEnum.STATUS_COMPLETED
@@ -322,6 +324,7 @@ async def test_conversion_preserves_history_and_previous_completions(
     task = (await db.execute(select(AssignmentTask))).scalars().one()
     assert task.contents["questions"][0]["options"][0]["assigned_right_answer"] is True
     assert activity.content == {}
+    assert course.description == "Eight lessons and an assessment."
     assert (await db.execute(select(ActivityVersion))).scalars().one().content == original
     step = (await db.execute(select(TrailStep).where(TrailStep.activity_id == 1))).scalars().one()
     assert step.complete is already_complete
