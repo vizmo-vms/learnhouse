@@ -438,7 +438,7 @@ class TestAnalyticsRouter:
         with _analytics_guard_patches(), patch(
             "src.routers.analytics._enrich_with_metadata",
             new_callable=AsyncMock,
-            side_effect=lambda rows, db: rows,
+            side_effect=lambda rows, db, **_: rows,
         ), patch(
             "src.routers.analytics._execute_tinybird_query",
             new_callable=AsyncMock,
@@ -479,7 +479,7 @@ class TestAnalyticsRouter:
         with _analytics_guard_patches(), patch(
             "src.routers.analytics._enrich_with_metadata",
             new_callable=AsyncMock,
-            side_effect=lambda rows, db: rows,
+            side_effect=lambda rows, db, **_: rows,
         ), patch(
             "src.routers.analytics._execute_tinybird_query",
             new_callable=AsyncMock,
@@ -562,7 +562,7 @@ class TestAnalyticsRouter:
         ), patch(
             "src.routers.analytics._enrich_with_metadata",
             new_callable=AsyncMock,
-            side_effect=lambda rows, db: rows,
+            side_effect=lambda rows, db, **_: rows,
         ), patch(
             "src.routers.analytics._execute_tinybird_query",
             new_callable=AsyncMock,
@@ -605,7 +605,7 @@ class TestAnalyticsRouter:
         ), patch(
             "src.routers.analytics._enrich_with_metadata",
             new_callable=AsyncMock,
-            side_effect=lambda rows, db: rows,
+            side_effect=lambda rows, db, **_: rows,
         ), patch(
             "src.routers.analytics._execute_tinybird_query",
             new_callable=AsyncMock,
@@ -661,7 +661,7 @@ class TestAnalyticsRouter:
         with _analytics_guard_patches(), patch(
             "src.routers.analytics._enrich_with_metadata",
             new_callable=AsyncMock,
-            side_effect=lambda rows, db: rows,
+            side_effect=lambda rows, db, **_: rows,
         ), patch(
             "src.routers.analytics._execute_tinybird_query",
             new_callable=AsyncMock,
@@ -674,7 +674,7 @@ class TestAnalyticsRouter:
         with _analytics_guard_patches(), patch(
             "src.routers.analytics._enrich_with_metadata",
             new_callable=AsyncMock,
-            side_effect=lambda rows, db: rows,
+            side_effect=lambda rows, db, **_: rows,
         ), patch(
             "src.routers.analytics._execute_tinybird_query",
             new_callable=AsyncMock,
@@ -697,7 +697,7 @@ class TestAnalyticsRouter:
         with _analytics_guard_patches(), patch(
             "src.routers.analytics._enrich_with_metadata",
             new_callable=AsyncMock,
-            side_effect=lambda rows, db: rows,
+            side_effect=lambda rows, db, **_: rows,
         ), patch(
             "src.routers.analytics._execute_tinybird_query",
             new_callable=AsyncMock,
@@ -715,7 +715,7 @@ class TestAnalyticsRouter:
         with _analytics_guard_patches(), patch(
             "src.routers.analytics._enrich_with_metadata",
             new_callable=AsyncMock,
-            side_effect=lambda rows, db: rows,
+            side_effect=lambda rows, db, **_: rows,
         ), patch(
             "src.routers.analytics._execute_tinybird_query",
             new_callable=AsyncMock,
@@ -756,7 +756,7 @@ class TestAnalyticsRouter:
         ), patch(
             "src.routers.analytics._enrich_with_metadata",
             new_callable=AsyncMock,
-            side_effect=lambda rows, db: rows,
+            side_effect=lambda rows, db, **_: rows,
         ), patch(
             "src.routers.analytics._execute_tinybird_query",
             new_callable=AsyncMock,

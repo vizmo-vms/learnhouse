@@ -415,7 +415,7 @@ async def query_dashboard_detail(
     ch_data = ch_result.get("data", [])
 
     # Enrich with course/activity metadata from PostgreSQL
-    ch_data = await _enrich_with_metadata(ch_data, db_session)
+    ch_data = await _enrich_with_metadata(ch_data, db_session, org_id=safe_org_id)
 
     # Enrich with user info from PostgreSQL
     user_ids = list({int(row["user_id"]) for row in ch_data if row.get("user_id")})
@@ -482,7 +482,7 @@ async def query_dashboard(
     sql = _build_sql(sql_template, safe_org_id, safe_days)
 
     result = await _execute_tinybird_query(query_name, sql, safe_org_id, safe_days)
-    result["data"] = await _enrich_with_metadata(result.get("data", []), db_session)
+    result["data"] = await _enrich_with_metadata(result.get("data", []), db_session, org_id=safe_org_id)
     return result
 
 
@@ -707,7 +707,7 @@ async def query_course_dashboard_detail(
             ]
 
     # Enrich with course/activity metadata from PostgreSQL
-    ch_data = await _enrich_with_metadata(ch_data, db_session)
+    ch_data = await _enrich_with_metadata(ch_data, db_session, org_id=safe_org_id)
 
     # Enrich with user info from PostgreSQL
     user_ids = list({int(row["user_id"]) for row in ch_data if row.get("user_id")})
@@ -775,7 +775,7 @@ async def query_course_dashboard(
         query_name, sql, safe_org_id, safe_days,
         course_id=safe_course_uuid,
     )
-    result["data"] = await _enrich_with_metadata(result.get("data", []), db_session)
+    result["data"] = await _enrich_with_metadata(result.get("data", []), db_session, org_id=safe_org_id)
     return result
 
 
@@ -874,7 +874,7 @@ async def export_analytics(
         d = safe_days if safe_days else default_days
         sql = _build_sql(sql_template, safe_org_id, d, safe_course_uuid)
         result = await _execute_tinybird_query(qname, sql, safe_org_id, d, course_id=safe_course_uuid)
-        result["data"] = await _enrich_with_metadata(result.get("data", []), db_session)
+        result["data"] = await _enrich_with_metadata(result.get("data", []), db_session, org_id=safe_org_id)
         results[qname] = result
 
     if fmt == "json":
