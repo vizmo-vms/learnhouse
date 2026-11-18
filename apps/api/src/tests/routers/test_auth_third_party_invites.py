@@ -3,8 +3,7 @@
 test_auth_third_party.py covers the gate itself (open org, missing invite,
 existing member, Redis down). These cover what happens once an invite is
 found: a pending email invite is honoured and then marked accepted, an invite
-code's usergroup is attached, and failures in that follow-up work never turn a
-completed sign-in into an error.
+code's usergroup is attached, and a failed group assignment prompts a retry.
 """
 
 import json
@@ -17,6 +16,7 @@ import pytest
 from fastapi import HTTPException, Response, status
 
 from src.db.organization_config import OrganizationConfig
+from src.db.usergroups import UserGroup
 from src.db.users import AnonymousUser
 from src.routers.auth import third_party_login
 
@@ -93,9 +93,8 @@ def redis_server():
 
 
 class TestNonGoogleProviderInInviteOnlyOrg:
-    async def test_body_email_is_normalised_for_the_invite_lookup(self, db, org):
-        """Any provider other than Google has no verified email to resolve, so
-        the invite gate falls back to the (normalised) body email."""
+    async def test_unsupported_provider_is_rejected_before_invite_lookup(self, db, org):
+        """Only a verified Google identity can authorize an OAuth invitation."""
         await _make_invite_only(db, org.id)
         mock_redis = MagicMock(get=MagicMock(return_value=None))
 
@@ -113,17 +112,16 @@ class TestNonGoogleProviderInInviteOnlyOrg:
                     ),
                 )
 
-        assert exc_info.value.status_code == status.HTTP_403_FORBIDDEN
-        mock_redis.get.assert_called_once_with(_invite_key("invitee@example.com", org))
+        assert exc_info.value.status_code == status.HTTP_400_BAD_REQUEST
+        assert exc_info.value.detail == "Unsupported provider"
+        mock_redis.get.assert_not_called()
 
 
 class TestPendingEmailInvite:
-    async def test_invalid_code_falls_back_to_email_invite_which_is_then_accepted(
+    async def test_invalid_shared_code_does_not_consume_pending_email_invite(
         self, db, org, signed_in, redis_server
     ):
-        """A bad invite code is not fatal when the address also has a pending
-        dashboard invite. After sign-in the invite is marked accepted and keeps
-        its remaining TTL, so the member list stops showing it as pending."""
+        """A shared link must resolve its own code and group mapping."""
         await _make_invite_only(db, org.id)
         key = _invite_key("invitee@example.com", org)
         seed = fakeredis.FakeRedis(server=redis_server)
@@ -133,8 +131,13 @@ class TestPendingEmailInvite:
             "src.services.orgs.invites.get_invite_code",
             AsyncMock(side_effect=HTTPException(status_code=404, detail="Invalid code")),
         ):
-            result = await _login(db, org, invite_code="BADCODE")
+            with pytest.raises(HTTPException) as invalid:
+                await _login(db, org, invite_code="BADCODE")
+            assert invalid.value.status_code == 404
+            assert json.loads(seed.get(key))["pending"] is True
+            signed_in.assert_not_awaited()
 
+        result = await _login(db, org)
         assert result["tokens"]["access_token"]
         assert signed_in.await_args.args[3] == org.id
 
@@ -171,7 +174,7 @@ class TestPendingEmailInvite:
             "src.routers.auth.get_learnhouse_config", return_value=_REDIS_CONFIG
         ), patch(
             "redis.Redis.from_url", side_effect=[gate_client, broken_client]
-        ), caplog.at_level(logging.WARNING, logger="src.routers.auth"):
+        ), caplog.at_level(logging.WARNING, logger="src.services.orgs.invites"):
             result = await _login(db, org)
 
         assert result["tokens"]["access_token"]
@@ -180,36 +183,46 @@ class TestPendingEmailInvite:
         assert "Could not mark invitation as accepted" in caplog.text
 
 
+@pytest.fixture
+async def invite_group(db, org):
+    group = UserGroup(org_id=org.id, name="New employees", description="", usergroup_uuid="usergroup_oauth_invite")
+    db.add(group)
+    await db.commit()
+    await db.refresh(group)
+    return group
+
+
 class TestInviteCodeUsergroup:
-    async def test_usergroup_from_invite_code_is_attached(self, db, org, signed_in):
+    async def test_usergroup_from_invite_code_is_attached(self, db, org, signed_in, redis_server, invite_group):
         await _make_invite_only(db, org.id)
         add_to_group = AsyncMock()
 
         with patch(
             "src.services.orgs.invites.get_invite_code",
-            AsyncMock(return_value={"invite_code": "CODE", "usergroup_id": "12"}),
+            AsyncMock(return_value={"invite_code": "CODE", "usergroup_id": str(invite_group.id)}),
         ), patch("src.services.users.usergroups.add_users_to_usergroup", add_to_group):
             result = await _login(db, org, invite_code="CODE")
 
         assert result["tokens"]["access_token"]
         args = add_to_group.await_args.args
         # usergroup id coerced to int, user id passed as the comma-list string.
-        assert args[3] == 12
+        assert args[3] == invite_group.id
         assert args[4] == "7"
 
-    async def test_usergroup_failure_does_not_fail_sign_in(
-        self, db, org, signed_in, caplog
+    async def test_usergroup_failure_requires_retry(
+        self, db, org, signed_in, redis_server, invite_group, caplog
     ):
         await _make_invite_only(db, org.id)
 
         with patch(
             "src.services.orgs.invites.get_invite_code",
-            AsyncMock(return_value={"invite_code": "CODE", "usergroup_id": 12}),
+            AsyncMock(return_value={"invite_code": "CODE", "usergroup_id": invite_group.id}),
         ), patch(
             "src.services.users.usergroups.add_users_to_usergroup",
             AsyncMock(side_effect=HTTPException(status_code=400, detail="gone")),
         ), caplog.at_level(logging.WARNING, logger="src.routers.auth"):
-            result = await _login(db, org, invite_code="CODE")
+            with pytest.raises(HTTPException) as error:
+                await _login(db, org, invite_code="CODE")
 
-        assert result["tokens"]["access_token"]
+        assert error.value.status_code == 503
         assert "Could not attach OAuth user to invite usergroup" in caplog.text

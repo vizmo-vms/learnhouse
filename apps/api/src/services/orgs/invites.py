@@ -402,7 +402,10 @@ def mark_org_invitation_accepted(key: str) -> None:
         logger.exception("Could not mark invitation as accepted")
     finally:
         if r is not None:
-            r.close()
+            try:
+                r.close()
+            except Exception:
+                logger.warning("Could not close invitation Redis connection")
 
 
 async def delete_invite_code(

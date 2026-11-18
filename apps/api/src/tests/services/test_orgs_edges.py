@@ -179,11 +179,13 @@ async def test_invite_only_org_without_a_code_refuses_the_join(db, org, mock_req
     caller = PublicUser(id=40, username="joiner", first_name="J", last_name="O", email="joiner@test.com", user_uuid="user_joiner")
 
     with patch("src.services.orgs.join.check_limits_with_usage", new_callable=AsyncMock), \
-         patch("src.services.orgs.join.get_org_join_mechanism", new=AsyncMock(return_value="inviteOnly")):
+         patch("src.services.orgs.join.get_org_join_mechanism", new=AsyncMock(return_value="inviteOnly")), \
+         patch("redis.Redis.from_url") as redis:
+        redis.return_value.get.return_value = None
         with pytest.raises(HTTPException) as exc:
             await join_org(mock_request, JoinOrg(org_id=org.id, user_id=40), caller, db)
     assert exc.value.status_code == 403
-    assert exc.value.detail == "Something wrong, try later."
+    assert exc.value.detail == "You need an invite to join this organization"
 
 
 async def test_policy_read_failure_allows_login(db):
