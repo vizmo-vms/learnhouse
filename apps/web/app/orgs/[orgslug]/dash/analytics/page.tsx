@@ -1,5 +1,7 @@
 'use client'
 import React, { useState } from 'react'
+import EnterpriseAnalytics from '@ee/components/Analytics/Pages/AnalyticsDashPage'
+import { isOrgAnalyticsAvailable } from '@ee/components/Analytics/availability'
 import dynamic from 'next/dynamic'
 import { Breadcrumbs } from '@components/Objects/Breadcrumbs/Breadcrumbs'
 import { ChartBar, ChartLine, SquaresFour } from '@phosphor-icons/react'
@@ -59,6 +61,10 @@ const DATE_RANGES = [
 type Tab = 'overview' | 'advanced'
 
 export default function AnalyticsDashboard() {
+  return isOrgAnalyticsAvailable() ? <EnterpriseAnalytics /> : <VizmoAnalyticsDashboard />
+}
+
+function VizmoAnalyticsDashboard() {
   const { t } = useTranslation()
   const [days, setDays] = useState('30')
   const [tab, setTab] = useState<Tab>('overview')

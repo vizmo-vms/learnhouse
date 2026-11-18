@@ -7,6 +7,8 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from src.db.organizations import Organization
 from src.db.user_organizations import UserOrganization
 from src.db.users import AnonymousUser, InternalUser, PublicUser, User
+from src.services.analytics import events as analytics_events
+from src.services.analytics.analytics import track
 from src.security.features_utils.usage import (
     check_limits_with_usage,
     increase_feature_usage,
@@ -106,6 +108,12 @@ async def join_org(
         await increase_feature_usage("members", org.id, db_session)
         from src.routers.users import _invalidate_session_cache
         _invalidate_session_cache(user.id)
+        await track(
+            event_name=analytics_events.USER_JOINED_ORG,
+            org_id=org.id,
+            user_id=user.id,
+            properties={"join_method": "invite_code" if code_data else "open"},
+        )
         await notify_user_joined_org(request, db_session, user, org.id, org=org)
 
     if code_data and code_data.get("usergroup_id"):

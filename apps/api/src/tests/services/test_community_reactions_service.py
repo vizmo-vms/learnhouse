@@ -181,7 +181,9 @@ class TestCommunityReactionsService:
         ), patch(
             "src.services.communities.reactions.check_resource_access",
             new_callable=AsyncMock,
-        ):
+        ), patch(
+            "src.services.communities.reactions.track", new_callable=AsyncMock
+        ) as mock_track:
             added = await toggle_reaction(
                 mock_request, discussion.discussion_uuid, "🔥", regular_user, db
             )
@@ -195,6 +197,17 @@ class TestCommunityReactionsService:
 
         assert added == {"action": "added", "emoji": "🔥"}
         assert removed == {"action": "removed", "emoji": "🔥"}
+        # Removing a reaction is not tracked; adding one is, once.
+        mock_track.assert_awaited_once_with(
+            event_name="reaction_added",
+            org_id=community.org_id,
+            user_id=regular_user.id,
+            properties={
+                "community_uuid": community.community_uuid,
+                "discussion_uuid": "discussion_c",
+                "reaction": "🔥",
+            },
+        )
         assert reaction_count == []
 
         with patch(
@@ -215,6 +228,53 @@ class TestCommunityReactionsService:
                 )
 
         assert anon_exc.value.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_set_reaction_with_active_is_idempotent(
+        self, db, org, admin_user, regular_user, mock_request
+    ):
+        """active=true twice adds once; active=false twice removes once. The
+        response reports the resulting state, including for the no-op."""
+        community = await _make_community(db, org)
+        discussion = await _make_discussion(
+            db, community, org, author_id=admin_user.id, discussion_uuid="discussion_idem"
+        )
+
+        async def rows():
+            return (await db.execute(
+                DiscussionReaction.__table__.select()  # type: ignore[attr-defined]
+            )).all()
+
+        with patch(
+            "src.services.communities.reactions.authorization_verify_if_user_is_anon",
+            new_callable=AsyncMock,
+        ), patch(
+            "src.services.communities.reactions.check_resource_access",
+            new_callable=AsyncMock,
+        ), patch(
+            "src.services.communities.reactions.track", new_callable=AsyncMock
+        ) as mock_track:
+            uuid = discussion.discussion_uuid
+            first_on = await toggle_reaction(
+                mock_request, uuid, "🔥", regular_user, db, active=True
+            )
+            second_on = await toggle_reaction(
+                mock_request, uuid, "🔥", regular_user, db, active=True
+            )
+            assert len(await rows()) == 1
+
+            first_off = await toggle_reaction(
+                mock_request, uuid, "🔥", regular_user, db, active=False
+            )
+            second_off = await toggle_reaction(
+                mock_request, uuid, "🔥", regular_user, db, active=False
+            )
+            assert await rows() == []
+
+        assert first_on == second_on == {"action": "added", "emoji": "🔥"}
+        assert first_off == second_off == {"action": "removed", "emoji": "🔥"}
+        # The no-op add is not tracked again.
+        mock_track.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_toggle_reaction_error_paths(self, db, org, admin_user, mock_request):

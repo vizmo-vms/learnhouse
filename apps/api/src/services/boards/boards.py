@@ -8,6 +8,7 @@ from src.db.boards import (
     Board,
     BoardCreate,
     BoardRead,
+    BoardReadWithRole,
     BoardUpdate,
     BoardMember,
     BoardMemberCreate,
@@ -21,9 +22,12 @@ from src.security.auth import resolve_acting_user_id
 from src.db.resource_authors import ResourceAuthor, ResourceAuthorshipEnum, ResourceAuthorshipStatusEnum
 from src.db.usergroup_resources import UserGroupResource
 from src.security.rbac import AccessAction, check_resource_access
+from src.core.ee_hooks import check_ee_live_board_access
 from src.security.org_auth import is_org_admin, is_org_member, require_org_create_permission, require_org_membership
 from src.services.utils.upload_content import upload_file
 from src.services.webhooks.dispatch import dispatch_webhooks
+from src.services.analytics import events as analytics_events
+from src.services.analytics.analytics import track
 
 
 async def create_board(
@@ -70,6 +74,12 @@ async def create_board(
     db_session.add(resource_author)
     await db_session.commit()
 
+    await track(
+        event_name=analytics_events.BOARD_CREATED,
+        org_id=org_id,
+        user_id=current_user.id,
+        properties={"board_uuid": board.board_uuid},
+    )
     await dispatch_webhooks(
         event_name="board_created",
         org_id=org_id,
@@ -99,7 +109,7 @@ async def get_boards_by_org(
     org_id: int,
     current_user: PublicUser | AnonymousUser | APITokenUser,
     db_session: AsyncSession,
-) -> List[BoardRead]:
+) -> List[BoardReadWithRole]:
     # Require org membership before listing boards; prevents unauthenticated
     # and cross-org enumeration of boards.
     await require_org_membership(resolve_acting_user_id(current_user), org_id, db_session)
@@ -128,8 +138,24 @@ async def get_boards_by_org(
     )).all()
     counts = {row[0]: row[1] for row in count_rows}
 
+    # The caller's own member role on every listed board, in one query. Org
+    # membership was required above, so each member row counts the way
+    # check_board_membership counts it.
+    role_rows = (await db_session.execute(
+        select(BoardMember.board_id, BoardMember.role)
+        .where(
+            col(BoardMember.board_id).in_(board_ids),
+            BoardMember.user_id == current_user.id,
+        )
+    )).all()
+    roles = {row[0]: row[1] for row in role_rows}
+
     return [
-        BoardRead(**b.model_dump(exclude={"ydoc_state"}), member_count=counts.get(b.id, 0))
+        BoardReadWithRole(
+            **b.model_dump(exclude={"ydoc_state"}),
+            member_count=counts.get(b.id, 0),
+            my_role=roles.get(b.id),
+        )
         for b in boards
     ]
 
@@ -406,17 +432,28 @@ async def check_board_membership(
     if not board:
         raise HTTPException(status_code=404, detail="Board not found")
 
+    # In the room of a live session drawing on this board: org members edit
+    # for as long as they stay in the class, guests of a public session watch.
+    live_role = None
+    if isinstance(current_user, PublicUser) and await check_ee_live_board_access(board.id, current_user.id, db_session):
+        in_org = await is_org_member(current_user.id, board.org_id, db_session)
+        live_role = BoardMemberRole.EDITOR if in_org else BoardMemberRole.VIEWER
+
     # Not a direct member: fall back to the read rule so public boards, linked
     # usergroups, resource authors, and org admins can still join the collab
     # session as viewers.
-    await _check_board_read(request, board, current_user, db_session)
+    if live_role is None:
+        await _check_board_read(request, board, current_user, db_session)
+    else:
+        # The class doesn't buy anyone a board that is sold on its own.
+        await _passes_board_paywall(request, board, current_user, db_session, True)
 
     user = (await db_session.execute(select(User).where(User.id == current_user.id))).scalars().first()
     return BoardMemberRead(
         id=0,
         board_id=board.id,
         user_id=current_user.id,
-        role=BoardMemberRole.VIEWER,
+        role=live_role or BoardMemberRole.VIEWER,
         creation_date="",
         username=user.username if user else None,
         email=user.email if user else None,
@@ -584,15 +621,27 @@ async def _check_board_read(
         decision.via_usergroup is not True
         or await _board_has_linked_usergroup(board, db_session)
     ):
-        return True
+        return await _passes_board_paywall(request, board, current_user, db_session, raise_on_deny)
     if await _is_board_member(board, current_user, db_session):
-        return True
+        return await _passes_board_paywall(request, board, current_user, db_session, raise_on_deny)
+    if isinstance(current_user, PublicUser) and await check_ee_live_board_access(board.id, current_user.id, db_session):
+        return await _passes_board_paywall(request, board, current_user, db_session, raise_on_deny)
     if raise_on_deny:
         raise HTTPException(
             status_code=403,
             detail=decision.reason if not decision.allowed else "This board is private to its members",
         )
     return False
+
+
+async def _passes_board_paywall(request, board: Board, current_user, db_session: AsyncSession, raise_on_deny: bool) -> bool:
+    """A board sold through an offer opens for its buyers (402 otherwise). Lists
+    (``raise_on_deny=False``) still show it, so people can find what to buy."""
+    if raise_on_deny:
+        from src.core.ee_hooks import require_ee_resource_paid_access
+
+        await require_ee_resource_paid_access(request, db_session, current_user, board.board_uuid)
+    return True
 
 
 async def _board_has_linked_usergroup(board: Board, db_session: AsyncSession) -> bool:

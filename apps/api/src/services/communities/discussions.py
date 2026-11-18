@@ -2,10 +2,12 @@ from typing import List, Union, Optional
 from uuid import uuid4
 from datetime import datetime, timezone
 from enum import Enum
+from sqlalchemy import func
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 from fastapi import HTTPException, Request
 
+from src.core.ee_hooks import require_ee_resource_paid_access
 from src.db.users import PublicUser, AnonymousUser, APITokenUser, User, UserReadAuthor
 from src.security.auth import resolve_acting_user_id
 from src.db.communities.communities import Community
@@ -14,10 +16,12 @@ from src.services.analytics import events as analytics_events
 from src.services.webhooks.dispatch import dispatch_webhooks
 from src.db.communities.discussions import (
     Discussion,
+    DiscussionReadWithCounts,
     DiscussionReadWithVoteStatus,
     DiscussionUpdate,
     DISCUSSION_LABELS,
 )
+from src.db.communities.discussion_comments import DiscussionComment
 from src.db.communities.discussion_votes import DiscussionVote
 from src.security.rbac import (
     check_resource_access,
@@ -114,6 +118,25 @@ def _is_author(
     return True
 
 
+async def _comment_counts(
+    db_session: AsyncSession, discussion_ids: List[int]
+) -> dict[int, int]:
+    """Comment totals per discussion, in one grouped query.
+
+    Counts exactly what ``get_comment_count`` counts: every comment row on the
+    discussion. Discussions without comments are absent from the map.
+    """
+    if not discussion_ids:
+        return {}
+    statement = (
+        select(DiscussionComment.discussion_id, func.count(DiscussionComment.id))
+        .where(DiscussionComment.discussion_id.in_(discussion_ids))  # type: ignore
+        .group_by(DiscussionComment.discussion_id)
+    )
+    rows = (await db_session.execute(statement)).all()
+    return {discussion_id: count for discussion_id, count in rows}
+
+
 async def create_discussion(
     request: Request,
     community_uuid: str,
@@ -137,6 +160,7 @@ async def create_discussion(
     await check_resource_access(
         request, db_session, current_user, community_uuid, AccessAction.READ
     )
+    await require_ee_resource_paid_access(request, db_session, current_user, community_uuid)
 
     # Get the community
     community_statement = select(Community).where(
@@ -237,7 +261,7 @@ async def get_discussion(
     discussion_uuid: str,
     current_user: Union[PublicUser, AnonymousUser, APITokenUser],
     db_session: AsyncSession,
-) -> DiscussionReadWithVoteStatus:
+) -> DiscussionReadWithCounts:
     """
     Get a discussion by UUID.
     """
@@ -256,6 +280,7 @@ async def get_discussion(
         raise HTTPException(status_code=404, detail="Community not found")
 
     await check_resource_access(request, db_session, current_user, community.community_uuid, AccessAction.READ)
+    await require_ee_resource_paid_access(request, db_session, current_user, community.community_uuid)
 
     # Get author info
     author_statement = select(User).where(User.id == discussion.author_id)
@@ -272,10 +297,13 @@ async def get_discussion(
         vote = (await db_session.execute(vote_statement)).scalars().first()
         has_voted = vote is not None
 
-    return DiscussionReadWithVoteStatus(
+    comment_counts = await _comment_counts(db_session, [discussion.id])
+
+    return DiscussionReadWithCounts(
         **discussion.model_dump(),
         author=UserReadAuthor.model_validate(author.model_dump()) if author else None,
         has_voted=has_voted,
+        comment_count=comment_counts.get(discussion.id, 0),
     )
 
 
@@ -288,7 +316,7 @@ async def get_discussions_by_community(
     page: int = 1,
     limit: int = 10,
     label: Optional[str] = None,
-) -> List[DiscussionReadWithVoteStatus]:
+) -> List[DiscussionReadWithCounts]:
     """
     Get paginated list of discussions for a community with sorting.
     Pinned discussions are always returned first.
@@ -297,6 +325,7 @@ async def get_discussions_by_community(
     await check_resource_access(
         request, db_session, current_user, community_uuid, AccessAction.READ
     )
+    await require_ee_resource_paid_access(request, db_session, current_user, community_uuid)
 
     # Get the community
     community_statement = select(Community).where(
@@ -388,6 +417,9 @@ async def get_discussions_by_community(
         votes = (await db_session.execute(votes_query)).scalars().all()
         user_votes = {v.discussion_id for v in votes}
 
+    # Batch fetch comment counts for the page
+    comment_counts = await _comment_counts(db_session, discussion_ids)
+
     # Build response
     result = []
     for discussion in discussions:
@@ -395,10 +427,11 @@ async def get_discussions_by_community(
         has_voted = discussion.id in user_votes
 
         result.append(
-            DiscussionReadWithVoteStatus(
+            DiscussionReadWithCounts(
                 **discussion.model_dump(),
                 author=UserReadAuthor.model_validate(author.model_dump()) if author else None,
                 has_voted=has_voted,
+                comment_count=comment_counts.get(discussion.id, 0),
             )
         )
 

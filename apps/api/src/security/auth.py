@@ -15,9 +15,11 @@ from jwt.exceptions import PyJWTError
 from datetime import datetime, timedelta, timezone
 from src.services.users.users import security_verify_password
 from src.security.security import ALGORITHM, SECRET_KEY, security_hash_password
+from src.security.embed_session import enforce_embed_scope
 from src.security.session_context import (
     AMR_CLAIM,
     AUTH_METHOD_API_TOKEN,
+    AUTH_METHOD_EMBED,
     CUSTOM_DOMAIN_CLAIM,
     LEGACY_GRACE_CLAIM,
     SORG_CLAIM,
@@ -546,9 +548,36 @@ def _record_activity_from_request(request: Request, user_id: Optional[int]) -> N
         _activity_logger.debug("activity scheduling failed (non-fatal)", exc_info=True)
 
 
+# get_current_user is also called directly (not through Depends) by router-level
+# guards such as require_authenticated_user, which FastAPI's per-request
+# dependency cache cannot see. Remember the answer on the request so the second
+# call doesn't repeat the user query, the revocation check and the activity
+# tracking.
+_RESOLVED_USER_STATE_KEY = "lh_resolved_current_user"
+
+
+def _resolved_current_user(request: Request):
+    store = getattr(getattr(request, "state", None), "_state", None)
+    return store.get(_RESOLVED_USER_STATE_KEY) if isinstance(store, dict) else None
+
+
 async def get_current_user(
     request: Request,
     db_session: AsyncSession = Depends(get_db_session),
+) -> Union[PublicUser, APITokenUser, SuperadminAPITokenUser, AnonymousUser]:
+    resolved = _resolved_current_user(request)
+    if resolved is not None:
+        return resolved
+    user = await _resolve_current_user(request, db_session)
+    store = getattr(getattr(request, "state", None), "_state", None)
+    if isinstance(store, dict):
+        store[_RESOLVED_USER_STATE_KEY] = user
+    return user
+
+
+async def _resolve_current_user(
+    request: Request,
+    db_session: AsyncSession,
 ) -> Union[PublicUser, APITokenUser, SuperadminAPITokenUser, AnonymousUser]:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -643,6 +672,12 @@ async def get_current_user(
             if token_type is not None and token_type != "access":
                 raise credentials_exception
 
+            # An embed session (minted by a host app for the embed components)
+            # only reaches the embed routes, inside its own org. Checked before
+            # anything else so a refused request never touches the database.
+            if payload.get(AMR_CLAIM) == AUTH_METHOD_EMBED:
+                enforce_embed_scope(request, payload.get(SORG_CLAIM))
+
             username = payload.get("sub")
 
     token_data = TokenData(username=username)
@@ -678,6 +713,13 @@ async def get_current_user(
             raise credentials_exception
 
         public_user = PublicUser(**user.model_dump())
+        # The superadmin flag is on the row just loaded; seed the per-session
+        # memo so RBAC checks later in this request don't query it again.
+        superadmin_memo = getattr(db_session, "_superadmin_cache", None)
+        if not isinstance(superadmin_memo, dict):
+            superadmin_memo = {}
+            db_session._superadmin_cache = superadmin_memo
+        superadmin_memo[user.id] = bool(getattr(user, "is_superadmin", False))
         request.state.user = public_user
         request.state.is_api_token = False
         # Publish this session's provenance (how the user authenticated, which
