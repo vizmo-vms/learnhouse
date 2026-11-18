@@ -208,7 +208,7 @@ describe('fetching from an instance', () => {
     render(<LearnHouseActivity baseUrl={BASE} activityId="activity_payouts" courseId={COURSE} showTitle onLoad={onLoad} />)
     await screen.findByText('Fetched body')
     expect(screen.getByText('How payouts work').tagName).toBe('H1')
-    expect(onLoad).toHaveBeenCalledWith(expect.objectContaining({ activity_uuid: 'activity_payouts' }))
+    await waitFor(() => expect(onLoad).toHaveBeenCalledWith(expect.objectContaining({ activity_uuid: 'activity_payouts' })))
     const urls = fetchMock.mock.calls.map(([u]) => String(u instanceof Request ? u.url : u))
     expect(urls.some((u) => u.startsWith(`${BASE}/api/v1/activities/activity_payouts`))).toBe(true)
   })
