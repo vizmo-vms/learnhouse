@@ -837,6 +837,11 @@ async def check_course_completion_and_create_certificate(
         assignments_passed = await are_course_assignments_passed(user_id, course_id, db_session)
         if assignments_passed:
             await finish_study_time(user_id, course_id, db_session)
+        # A finished course can finish a learning path the learner follows.
+        # Best-effort: it never fails the course completion itself.
+        from src.services.paths.paths import check_paths_for_completed_course
+        await check_paths_for_completed_course(request, user_id, course_id, db_session)
+
         # All activities completed, check if certification exists for this course
         statement = select(Certifications).where(Certifications.course_id == course_id)
         certification = (await db_session.execute(statement)).scalars().first()
@@ -905,6 +910,13 @@ async def get_certificate_by_user_certification_uuid(
 
     # No RBAC check - allow anyone to access certificates by UUID
 
+    # The holder's name, which the certificate itself prints: a verification
+    # page has to say who the credential belongs to. Nothing else about them.
+    from src.db.users import User
+    holder = (await db_session.execute(
+        select(User).where(User.id == certificate_user.user_id)
+    )).scalars().first()
+
     return {
         "certificate_user": CertificateUserRead(**certificate_user.model_dump()),
         "certification": CertificationRead(**certification.model_dump()),
@@ -914,7 +926,13 @@ async def get_certificate_by_user_certification_uuid(
             "name": course.name,
             "description": course.description,
             "thumbnail_image": course.thumbnail_image,
-        }
+        },
+        "user": {
+            "user_uuid": getattr(holder, "user_uuid", None),
+            "username": getattr(holder, "username", None),
+            "first_name": getattr(holder, "first_name", None),
+            "last_name": getattr(holder, "last_name", None),
+        },
     }
 
 
@@ -922,10 +940,19 @@ async def get_all_user_certificates(
     request: Request,
     current_user: PublicUser | AnonymousUser,
     db_session: AsyncSession,
+    org_id: int | None = None,
 ) -> List[dict]:
-    """Get all certificates for the current user with complete linked information"""
-    
+    """Get all certificates for the current user with complete linked information.
+
+    With ``org_id``, only certificates whose course belongs to that org are
+    returned; without it, every org's certificates are listed.
+    """
+
     # Get all certificate users for this user
+    # A session held to one org (LMS launch, custom domain) lists that org's certificates only.
+    from src.security.session_context import held_org_id
+
+    held = held_org_id()
     statement = select(CertificateUser).where(CertificateUser.user_id == current_user.id)
     certificate_users = (await db_session.execute(statement)).scalars().all()
 
@@ -961,7 +988,9 @@ async def get_all_user_certificates(
             continue
 
         course = course_map.get(certification.course_id)
-        if not course:
+        if not course or (held is not None and course.org_id != held):
+            continue
+        if org_id is not None and course.org_id != org_id:
             continue
 
         user = user_map.get(cert_user.user_id)
@@ -975,6 +1004,7 @@ async def get_all_user_certificates(
                 "name": course.name,
                 "description": course.description,
                 "thumbnail_image": course.thumbnail_image,
+                "org_id": course.org_id,
             },
             "user": {
                 "id": user.id if user else None,

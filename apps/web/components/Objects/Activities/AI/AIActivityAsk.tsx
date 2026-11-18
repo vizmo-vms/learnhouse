@@ -20,6 +20,23 @@ import UserAvatar from '@components/Objects/UserAvatar'
 import { useTranslation } from 'react-i18next'
 import AIMarkdownRenderer from './AIMarkdownRenderer'
 import AIFollowUpSuggestions from './AIFollowUpSuggestions'
+import { useLHAnalytics, AnalyticsEvent } from '@services/analytics'
+
+// Phones (<768px, the shell's breakpoint) can't spare a 380px column for the
+// side panel, so it floats above the bottom bar instead.
+const PHONE_QUERY = '(max-width: 767px)'
+const subscribePhone = (onChange: () => void) => {
+  const mql = window.matchMedia(PHONE_QUERY)
+  mql.addEventListener('change', onChange)
+  return () => mql.removeEventListener('change', onChange)
+}
+function useIsPhone() {
+  return React.useSyncExternalStore(
+    subscribePhone,
+    () => window.matchMedia(PHONE_QUERY).matches,
+    () => false
+  )
+}
 
 function AIActivityAsk() {
   const { t } = useTranslation()
@@ -27,6 +44,7 @@ function AIActivityAsk() {
   const [isButtonAvailable, setIsButtonAvailable] = React.useState(false)
   const dispatchAIChatBot = useAIChatBotDispatch() as any
   const { mode } = useAIPanelMode()
+  const { track } = useLHAnalytics('learner')
 
   useEffect(() => {
     if (is_ai_feature_enabled) {
@@ -35,6 +53,7 @@ function AIActivityAsk() {
   }, [is_ai_feature_enabled])
 
   const handleOpenAI = () => {
+    track(AnalyticsEvent.AiAssistantOpened, { surface: 'activity' })
     if (mode === 'hover') {
       dispatchAIChatBot({ type: 'setIsModalOpen' })
     } else {
@@ -296,7 +315,7 @@ function ActivityChatMessageBox(props: ActivityChatMessageBoxProps) {
               style={{
                 pointerEvents: 'auto',
               }}
-              className={`bg-white z-[10000] shadow-xl ring-1 ring-inset ring-gray-200 text-gray-900 p-4 transition-all duration-300 flex flex-col rounded-2xl max-w-(--breakpoint-2xl) w-11/12 sm:w-10/12 mx-auto fixed bottom-4 left-1/2 transform -translate-x-1/2 ${
+              className={`bg-white z-[10000] shadow-xl ring-1 ring-inset ring-gray-200 text-gray-900 p-4 transition-all duration-300 flex flex-col rounded-2xl max-w-(--breakpoint-2xl) w-10/12 max-md:w-[calc(100%-16px)] mx-auto fixed bottom-4 max-md:bottom-[calc(var(--lh-mobile-nav-h)+8px)] left-1/2 transform -translate-x-1/2 ${
                 aiChatBotState.isFullscreen
                   ? 'h-[80vh]'
                   : 'h-[350px]'
@@ -310,14 +329,14 @@ function ActivityChatMessageBox(props: ActivityChatMessageBoxProps) {
                       dispatchAIChatBot({ type: 'switchToSideMode' })
                     }}
                     className={AI_ICON_BUTTON_CLASS}
-                    title="Switch to side mode"
+                    title={t('ai.switch_to_side_mode')}
                   >
                     <PanelRightOpen size={18} />
                   </button>
                   <button
                     onClick={toggleFullscreen}
                     className={AI_ICON_BUTTON_CLASS}
-                    title={aiChatBotState.isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+                    title={aiChatBotState.isFullscreen ? t('ai.exit_fullscreen') : t('ai.fullscreen')}
                   >
                     {aiChatBotState.isFullscreen ? (
                       <Minimize2 size={18} />
@@ -726,6 +745,7 @@ function AISidePanelInline(props: AISidePanelProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const [isSecondaryBarVisible, setIsSecondaryBarVisible] = React.useState(false)
+  const isPhone = useIsPhone()
 
   const isInputDisabled = aiChatBotState?.isWaitingForResponse || aiChatBotState?.isStreaming
 
@@ -907,10 +927,15 @@ function AISidePanelInline(props: AISidePanelProps) {
         duration: 0.4,
       }}
       style={{
-        height: panelHeight,
-        top: topPosition,
+        ...(isPhone
+          ? { height: 'min(70dvh, 560px)' }
+          : { height: panelHeight, top: topPosition }),
       }}
-      className="sticky w-[380px] shrink-0 nice-shadow bg-white ring-1 ring-inset ring-gray-200 text-gray-900 p-4 flex flex-col rounded-xl transition-all duration-300"
+      className={`${
+        isPhone
+          ? 'fixed inset-x-2 bottom-[calc(var(--lh-mobile-nav-h)+8px)] z-[9998] rounded-2xl'
+          : 'sticky w-[380px] shrink-0 rounded-xl'
+      } nice-shadow bg-white ring-1 ring-inset ring-gray-200 text-gray-900 p-4 flex flex-col transition-all duration-300`}
     >
           {/* Header */}
           <div className="flex flex-row-reverse pb-3 justify-between items-center">
@@ -920,8 +945,8 @@ function AISidePanelInline(props: AISidePanelProps) {
                   setMode('hover')
                   dispatchAIChatBot({ type: 'switchToHoverMode' })
                 }}
-                className={AI_ICON_BUTTON_CLASS}
-                title="Switch to hover mode"
+                    className={AI_ICON_BUTTON_CLASS}
+                title={t('ai.switch_to_hover_mode')}
               >
                 <PanelTop size={18} />
               </button>

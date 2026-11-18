@@ -1,5 +1,7 @@
 'use client'
 import React, { use, useState } from 'react'
+import EnterpriseUserAnalytics from '@ee/components/Analytics/Pages/UserAnalyticsPage'
+import { isOrgAnalyticsAvailable } from '@ee/components/Analytics/availability'
 import Link from 'next/link'
 import { motion } from 'motion/react'
 import { useTranslation } from 'react-i18next'
@@ -19,6 +21,10 @@ const RANGES = [
 ]
 
 export default function UserAnalyticsDetailPage(props: { params: Promise<PageParams> }) {
+  return isOrgAnalyticsAvailable() ? <EnterpriseUserAnalytics {...props} /> : <VizmoUserAnalytics {...props} />
+}
+
+function VizmoUserAnalytics(props: { params: Promise<PageParams> }) {
   const { t } = useTranslation()
   const params = use(props.params)
   const userId = Number(params.userId)

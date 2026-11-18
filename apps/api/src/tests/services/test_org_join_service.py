@@ -100,7 +100,9 @@ class TestOrgJoinService:
             "src.services.orgs.join.increase_feature_usage"
         ), patch(
             "src.routers.users._invalidate_session_cache"
-        ):
+        ), patch(
+            "src.services.orgs.join.track", new_callable=AsyncMock
+        ) as mock_track:
             result = await join_org(
                 mock_request,
                 JoinOrg(org_id=org.id, user_id=user.id),
@@ -109,6 +111,12 @@ class TestOrgJoinService:
             )
 
         assert result == "Great, You're part of the Organization"
+        mock_track.assert_awaited_once_with(
+            event_name="user_joined_org",
+            org_id=org.id,
+            user_id=user.id,
+            properties={"join_method": "open"},
+        )
         row = (await db.execute(
             select(UserOrganization).where(
                 UserOrganization.user_id == user.id,
@@ -206,7 +214,9 @@ class TestOrgJoinService:
             "src.services.orgs.join.increase_feature_usage"
         ), patch(
             "src.routers.users._invalidate_session_cache"
-        ):
+        ), patch(
+            "src.services.orgs.join.track", new_callable=AsyncMock
+        ) as mock_track:
             result = await join_org(
                 mock_request,
                 JoinOrg(org_id=org.id, user_id=user.id, invite_code="ABC12345"),
@@ -216,6 +226,12 @@ class TestOrgJoinService:
 
         assert result == "Great, You're part of the Organization"
         mock_add_users.assert_awaited_once()
+        mock_track.assert_awaited_once_with(
+            event_name="user_joined_org",
+            org_id=org.id,
+            user_id=user.id,
+            properties={"join_method": "invite_code"},
+        )
 
     @pytest.mark.asyncio
     async def test_join_org_failure_branches(

@@ -21,13 +21,14 @@ from src.db.users import AnonymousUser, APITokenUser, PublicUser, User
 from src.security.auth import get_current_user, resolve_acting_user_id
 from src.security.api_token_utils import require_token_right
 from src.security.org_auth import enforce_org_mfa
+from src.security.session_context import refuse_outside_held_org
 from src.security.features_utils.plan_check import get_org_plan
 from src.security.features_utils.plans import plan_meets_requirement
 from src.security.superadmin import is_user_superadmin
 from src.services.analytics.analytics import track
 from src.services.analytics.cache import get_cached_result, set_cached_result
 from src.services.analytics.enrichment import enrich_with_metadata
-from src.services.analytics.events import ALLOWED_FRONTEND_EVENTS
+from src.services.analytics import events
 from src.services.analytics.progress import learner_progress
 from src.services.analytics.progress import postgres_overview as _query_postgres_overview
 from src.services.analytics.queries import (
@@ -42,6 +43,15 @@ from src.services.orgs.users import _csv_safe
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# Preserve the original Community event endpoint contract.
+ALLOWED_FRONTEND_EVENTS = {
+    events.PAGE_VIEW,
+    events.COURSE_VIEW,
+    events.ACTIVITY_VIEW,
+    events.SEARCH_QUERY,
+    events.TIME_ON_ACTIVITY,
+}
 
 
 def _require_analytics_token_rights(current_user, org_id: int) -> None:
@@ -204,6 +214,7 @@ async def _verify_org_membership(user_id: int, org_id: int, db_session: AsyncSes
     actually belongs to the org whose data they are querying.
     Superadmins bypass this check (they have access to all organizations).
     """
+    refuse_outside_held_org(org_id)
     if await is_user_superadmin(user_id, db_session):
         return
 
@@ -226,6 +237,7 @@ async def _verify_org_admin(user_id: int, org_id: int, db_session: AsyncSession)
     to the actual organization being accessed, not any org the user belongs to.
     Superadmins bypass this check.
     """
+    refuse_outside_held_org(org_id)
     if await is_user_superadmin(user_id, db_session):
         return
 
